@@ -16,8 +16,8 @@ spring:
 
   datasource:
     url: jdbc:mysql://localhost:3306/ebook_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-    username: ebook_admin
-    password: ebook_123456
+    username: root
+    password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -73,8 +73,8 @@ flyway:
 
 minio:
   endpoint: http://localhost:9000
-  access-key: name           # 如果你真的配置了 name/password 就保持
-  secret-key: password
+  access-key: minioadmin           # 如果你真的配置了 name/password 就保持
+  secret-key: minioadmin
   bucket: notesharing
 
 mybatis:
