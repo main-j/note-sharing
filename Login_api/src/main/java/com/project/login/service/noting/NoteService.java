@@ -1,16 +1,14 @@
 package com.project.login.service.noting;
 
 import com.project.login.convert.NoteConvert;
-import com.project.login.mapper.NoteMapper;
-import com.project.login.mapper.NotebookMapper;
-import com.project.login.mapper.TagMapper;
-import com.project.login.model.dataobject.NoteDO;
-import com.project.login.model.dataobject.NotebookDO;
+import com.project.login.mapper.*;
+import com.project.login.model.dataobject.*;
 import com.project.login.model.dto.note.*;
-import com.project.login.model.entity.NoteEntity;
-import com.project.login.model.entity.NotebookEntity;
+import com.project.login.model.event.EsNoteEvent;
+import com.project.login.model.event.NoteActionType;
 import com.project.login.model.vo.NoteVO;
 import com.project.login.service.minio.MinioService;
+import com.project.login.service.tag.TagService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -20,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,11 +26,16 @@ public class NoteService {
 
     private final NoteMapper noteMapper;
     private final NotebookMapper notebookMapper;
-    private final TagMapper tagMapper;
+    private final NoteSpaceMapper notespaceMapper;
+    private final UserMapper userMapper;
     private final MinioService minioservice;
+    private final TagService tagService;
+    private final NoteEventPublisher eventPublisher;
+    private final ContentSummaryService contentSummaryService;
 
     @Qualifier("noteConvert")
     private final NoteConvert convert;
+    private final TagMapper tagMapper;
 
 
     @Transactional
@@ -45,6 +47,9 @@ public class NoteService {
 
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
+        String contentSummary = contentSummaryService.extractContentSummary(file);
+
+        //minio 名字
         String name = minioservice.uploadFile(file);
         String url = minioservice.getFileUrl(name);
 
@@ -59,6 +64,23 @@ public class NoteService {
 
         noteMapper.insert(note);
 
+        // --- 发布异步更新 ES 事件 ---
+        EsNoteEvent event = new EsNoteEvent();
+        event.setNoteId(note.getId());
+        event.setAction(NoteActionType.CREATE);
+
+        event.setTitle(note.getTitle());
+        event.setContentSummary(contentSummary);
+
+        NotebookDO notebook = notebookMapper.selectById(dto.getMeta().getNotebookId());
+        NoteSpaceDO notespace = notespaceMapper.selectById(notebook.getSpaceId());
+        UserDO user = userMapper.selectById(notespace.getUserId());
+        event.setAuthorName(user.getUsername());
+
+        event.setUpdatedAt(LocalDateTime.now());
+
+        eventPublisher.sendEsNoteEvent(event);
+
         return convert.toVO(note);
     }
 
@@ -71,8 +93,8 @@ public class NoteService {
 
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
+        String contentSummary = contentSummaryService.extractContentSummary(file);
         String name = minioservice.uploadFile(file);
-        String url = minioservice.getFileUrl(name);
 
         existing.setTitle(dto.getMeta().getTitle());
         existing.setFileType(dto.getMeta().getFileType());
@@ -80,6 +102,18 @@ public class NoteService {
         existing.setUpdatedAt(LocalDateTime.now());
 
         noteMapper.update(existing);
+
+        // --- 发布异步更新 ES 事件 ---
+        EsNoteEvent event = new EsNoteEvent();
+        event.setNoteId(existing.getId());
+        event.setAction(NoteActionType.UPDATE);
+
+        event.setTitle(existing.getTitle());
+        event.setContentSummary(contentSummary);
+
+        event.setUpdatedAt(LocalDateTime.now());
+
+        eventPublisher.sendEsNoteEvent(event);
 
         return convert.toVO(existing);
     }
@@ -93,6 +127,13 @@ public class NoteService {
         minioservice.deleteFile(existing.getFilename());
 
         noteMapper.deleteById(dto.getNoteId());
+
+        // --- 发布异步更新 ES 事件 ---
+        EsNoteEvent event = new EsNoteEvent();
+        event.setNoteId(existing.getId());
+        event.setAction(NoteActionType.DELETE);
+
+        eventPublisher.sendEsNoteEvent(event);
     }
 
 
@@ -136,6 +177,7 @@ public class NoteService {
 
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
+        String contentSummary = contentSummaryService.extractContentSummary(file);
         String name = minioservice.uploadFile(file);
         String url = minioservice.getFileUrl(name);
 
@@ -149,6 +191,24 @@ public class NoteService {
                 .build();
 
         noteMapper.insert(note);
+
+        // --- 发布异步更新 ES 事件 ---
+        EsNoteEvent event = new EsNoteEvent();
+        event.setNoteId(note.getId());
+        event.setAction(NoteActionType.CREATE);
+
+        event.setTitle(note.getTitle());
+        event.setContentSummary(contentSummary);
+
+        NotebookDO notebook = notebookMapper.selectById(dto.getMeta().getNotebookId());
+        NoteSpaceDO notespace = notespaceMapper.selectById(notebook.getSpaceId());
+
+        UserDO user = userMapper.selectById(notespace.getUserId());
+        event.setAuthorName(user.getUsername());
+
+        event.setUpdatedAt(LocalDateTime.now());
+
+        eventPublisher.sendEsNoteEvent(event);
 
         return convert.toVO(note);
     }
@@ -179,7 +239,15 @@ public class NoteService {
         note.setTitle(dto.getNewName());
         note.setUpdatedAt(LocalDateTime.now());
         noteMapper.update(note);
-        // 3. 转 VO
+
+        EsNoteEvent event = new EsNoteEvent();
+        event.setNoteId(note.getId());
+        event.setAction(NoteActionType.UPDATE);
+
+        event.setTitle(note.getTitle());
+
+        eventPublisher.sendEsNoteEvent(event);
+
         return convert.toVO(note);
     }
 }

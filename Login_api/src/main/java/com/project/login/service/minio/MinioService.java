@@ -43,7 +43,7 @@ public class MinioService {
             return fileName;
 
         } catch (Exception e) {
-            e.printStackTrace(); // ⚠️ 打印堆栈，方便调试
+            e.printStackTrace(); // 打印堆栈，方便调试
             throw new RuntimeException("File upload failed", e);
         }
     }

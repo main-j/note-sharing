@@ -17,10 +17,10 @@ public class NoteAdminSummary {
     private String preview;
 
     public static NoteAdminSummary from(NoteEntity n) {
-        String author = n.getNotebook().getSpace().getUser().getUsername();
-        String space = n.getNotebook().getSpace().getName();
-        String notebook = n.getNotebook().getName();
-        String tag = n.getNotebook().getTag().getName();
+        String author = n.getAuthorName();
+        String space = null;
+        String notebook = null;
+        String tag = (n.getTags() != null && !n.getTags().isEmpty()) ? n.getTags().get(0) : null;
         String preview = n.getTitle();
         return new NoteAdminSummary(n.getId(), author, space, notebook, tag, preview);
     }

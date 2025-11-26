@@ -1,4 +1,5 @@
 package com.project.login.model.entity;
+
 import java.util.Set;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

@@ -12,30 +12,28 @@
       </header>
 
       <div class="profile-content">
-        <!-- 用户信息显示 -->
         <div class="info-section">
           <div class="info-item">
             <label>用户名</label>
-            <div class="info-value">{{ userInfo.username }}</div>
+            <div class="info-value">{{ userInfo.username || 'N/A' }}</div>
           </div>
 
           <div class="info-item">
             <label>学号</label>
-            <div class="info-value">{{ userInfo.studentId }}</div>
+            <div class="info-value">{{ userInfo.studentNumber || '未填写' }}</div>
           </div>
 
           <div class="info-item">
             <label>邮箱</label>
-            <div class="info-value">{{ userInfo.email }}</div>
+            <div class="info-value">{{ userInfo.email || 'N/A' }}</div>
           </div>
 
-          <p class="info-note">* 邮箱不可修改</p>
+          <p class="info-note">* 邮箱不可修改，重置密码验证码将发送到此邮箱</p>
         </div>
 
-        <!-- 操作按钮 -->
         <div class="actions-section">
           <button class="text-action" @click="showChangePasswordDialog = true">
-            <span>修改密码</span>
+            <span>重置密码</span>
             <span class="action-indicator" aria-hidden="true">↗</span>
           </button>
           <button class="text-action danger" @click="handleLogout">
@@ -46,35 +44,44 @@
       </div>
     </div>
 
-    <!-- 修改密码对话框 -->
-    <div v-if="showChangePasswordDialog" class="modal" @click.self="showChangePasswordDialog = false">
+    <div v-if="showChangePasswordDialog" class="modal" @click.self="closePasswordDialog">
       <div class="modal-content">
-        <h3>修改密码</h3>
+        <h3>重置密码</h3>
+        <p v-if="userInfo.email">验证码将发送至您的注册邮箱：**{{ userInfo.email }}**</p>
 
-        <div class="form-group">
-          <label>当前密码</label>
-          <input
-            v-model="passwordForm.oldPassword"
-            type="password"
-            placeholder="请输入当前密码"
-          />
+        <div class="form-group code-group">
+          <label>邮箱验证码</label>
+          <div class="input-with-button">
+            <input
+                v-model="passwordForm.code"
+                type="text"
+                placeholder="请输入邮箱验证码"
+            />
+            <button
+                :disabled="isSendingCode || codeCountdown > 0 || !userInfo.email"
+                class="code-button"
+                @click="sendResetCode"
+            >
+              {{ codeCountdown > 0 ? `${codeCountdown}s 后重发` : '发送验证码' }}
+            </button>
+          </div>
         </div>
 
         <div class="form-group">
           <label>新密码</label>
           <input
-            v-model="passwordForm.newPassword"
-            type="password"
-            placeholder="请输入新密码"
+              v-model="passwordForm.newPassword"
+              type="password"
+              placeholder="请输入新密码 (至少6位)"
           />
         </div>
 
         <div class="form-group">
           <label>确认新密码</label>
           <input
-            v-model="passwordForm.confirmPassword"
-            type="password"
-            placeholder="请再次输入新密码"
+              v-model="passwordForm.confirmPassword"
+              type="password"
+              placeholder="请再次输入新密码"
           />
         </div>
 
@@ -84,12 +91,11 @@
 
         <div class="modal-actions">
           <button @click="closePasswordDialog">取消</button>
-          <button class="primary" @click="handleChangePassword">确认修改</button>
+          <button class="primary" @click="handleResetPassword">确认重置</button>
         </div>
       </div>
     </div>
 
-    <!-- 退出登录确认对话框 -->
     <div v-if="showLogoutDialog" class="modal" @click.self="showLogoutDialog = false">
       <div class="modal-content">
         <h3>确认退出</h3>
@@ -106,159 +112,160 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { useUserStore } from '@/stores/user'
+import request from '@/api/request'
 
 const router = useRouter()
+const API_BASE_URL = '/auth'
 
-// 用户信息
-const userInfo = ref({
-  username: '',
-  studentId: '',
-  email: ''
-})
+// --- Pinia 整合 ---
+const userStore = useUserStore()
+const { userInfo, isLoggedIn } = storeToRefs(userStore)
 
-// 对话框显示状态
+// --- 本地状态 ---
 const showChangePasswordDialog = ref(false)
 const showLogoutDialog = ref(false)
+const passwordError = ref('')
 
-// 修改密码表单
 const passwordForm = ref({
-  oldPassword: '',
+  code: '',
   newPassword: '',
   confirmPassword: ''
 })
 
-const passwordError = ref('')
+// 验证码发送相关状态
+const isSendingCode = ref(false)
+const codeCountdown = ref(0)
+let timer = null
 
-/**
- * API: 获取用户信息
- * GET /api/user/profile
- * 输出: {
- *   code: number,
- *   data: {
- *     username: string,
- *     studentId: string,
- *     email: string,
- *     createdAt: string
- *   }
- * }
- */
+// ------------------------------------
+// 1. 数据加载与同步
+// ------------------------------------
+
 const loadUserInfo = async () => {
-  try {
-    // const response = await fetch('/api/user/profile')
-    // const result = await response.json()
-    // userInfo.value = result.data
-    
-    // 模拟数据
-    userInfo.value = {
-      username: '张三',
-      studentId: '2021001234',
-      email: 'zhangsan@example.com'
+  // 检查 Store 中是否有数据，如果没有且理论上已登录（有Token），则请求 /me
+  if (!userInfo.value.email && isLoggedIn.value) {
+    try {
+      const res = await request.get('/auth/me');
+      // 使用 Store Action 更新数据
+      userStore.setUserData(res.data);
+    } catch (error) {
+      console.error('获取用户信息失败，执行登出:', error);
+      userStore.clearUserData();
+      router.push('/login');
     }
-  } catch (error) {
-    console.error('获取用户信息失败:', error)
+  } else if (!isLoggedIn.value) {
+    // 如果没有 Token，确保跳转到登录页
+    router.push('/login');
   }
 }
 
-/**
- * API: 修改密码
- * POST /api/user/change-password
- * 输入: {
- *   oldPassword: string,
- *   newPassword: string
- * }
- * 输出: {
- *   code: number,
- *   message: string
- * }
- */
-const handleChangePassword = async () => {
-  passwordError.value = ''
+// ------------------------------------
+// 2. 发送验证码逻辑 (/api/v1/auth/password/send-code)
+// ------------------------------------
 
-  // 表单验证
-  if (!passwordForm.value.oldPassword) {
-    passwordError.value = '请输入当前密码'
-    return
+const sendResetCode = async () => {
+  const email = userInfo.value.email;
+
+  if (!email || isSendingCode.value || codeCountdown.value > 0) {
+    if (!email) passwordError.value = '无法获取用户邮箱地址。';
+    return;
   }
 
-  if (!passwordForm.value.newPassword) {
-    passwordError.value = '请输入新密码'
-    return
-  }
-
-  if (passwordForm.value.newPassword.length < 6) {
-    passwordError.value = '新密码长度不能少于6位'
-    return
-  }
-
-  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    passwordError.value = '两次输入的新密码不一致'
-    return
-  }
+  isSendingCode.value = true;
+  codeCountdown.value = 60;
+  passwordError.value = '';
 
   try {
-    // const response = await fetch('/api/user/change-password', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({
-    //     oldPassword: passwordForm.value.oldPassword,
-    //     newPassword: passwordForm.value.newPassword
-    //   })
-    // })
-    // const result = await response.json()
-    
-    // if (result.code === 200) {
-    //   alert('密码修改成功,请重新登录')
-    //   closePasswordDialog()
-    //   handleLogout()
-    // } else {
-    //   passwordError.value = result.message
-    // }
+    const res = await request.post(`${API_BASE_URL}/password/send-code`, { email: email });
 
-    // 模拟成功
-    alert('密码修改成功')
-    closePasswordDialog()
+    alert(res.message || '验证码已发送到您的邮箱。');
+    startCountdown();
+
   } catch (error) {
-    console.error('修改密码失败:', error)
-    passwordError.value = '修改密码失败,请稍后重试'
+    // 假设 request 库在错误时抛出包含后端错误信息的对象
+    const errorMessage = error.response?.data?.error || error.response?.data?.message || '验证码发送失败，请稍后重试。';
+    passwordError.value = errorMessage;
+    codeCountdown.value = 0;
+    isSendingCode.value = false;
+  }
+}
+
+const startCountdown = () => {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (codeCountdown.value > 0) {
+      codeCountdown.value--;
+    } else {
+      clearInterval(timer);
+      isSendingCode.value = false;
+    }
+  }, 1000);
+}
+
+// ------------------------------------
+// 3. 重置密码逻辑 (/api/v1/auth/password/reset)
+// ------------------------------------
+
+const handleResetPassword = async () => {
+  passwordError.value = ''
+
+  // 1. 表单验证
+  const { code, newPassword, confirmPassword } = passwordForm.value;
+
+  if (!code) { passwordError.value = '请输入邮箱验证码'; return; }
+  if (!newPassword || !confirmPassword) { passwordError.value = '新密码和确认密码不能为空'; return; }
+  if (newPassword.length < 6) { passwordError.value = '新密码长度不能少于6位'; return; }
+  if (newPassword !== confirmPassword) { passwordError.value = '两次输入的新密码不一致'; return; }
+
+  // 2. 调用后端接口
+  try {
+    const payload = {
+      email: userInfo.value.email,
+      newPassword: newPassword,
+      code: code
+    }
+
+    const res = await request.post(`${API_BASE_URL}/password/reset`, payload);
+
+    alert(res.message || '密码重置成功，请使用新密码重新登录！');
+    closePasswordDialog();
+    confirmLogout();
+
+  } catch (error) {
+    const errorMessage = error.response?.data?.error || error.response?.data?.message || '重置密码失败,请稍后重试。';
+    console.error('重置密码失败:', error);
+    passwordError.value = errorMessage;
   }
 }
 
 const closePasswordDialog = () => {
   showChangePasswordDialog.value = false
-  passwordForm.value = {
-    oldPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  }
+  clearInterval(timer);
+  codeCountdown.value = 0;
+  isSendingCode.value = false;
+  passwordForm.value = { code: '', newPassword: '', confirmPassword: '' }
   passwordError.value = ''
 }
+
+// ------------------------------------
+// 4. 退出登录逻辑
+// ------------------------------------
 
 const handleLogout = () => {
   showLogoutDialog.value = true
 }
 
-/**
- * API: 退出登录
- * POST /api/auth/logout
- * 输出: {
- *   code: number,
- *   message: string
- * }
- */
-const confirmLogout = async () => {
-  try {
-    // const response = await fetch('/api/auth/logout', { method: 'POST' })
-    // const result = await response.json()
-    
-    // 清除本地token/session
-    localStorage.removeItem('token')
-    
-    // 跳转到登录页
-    router.push('/login')
-  } catch (error) {
-    console.error('退出登录失败:', error)
-  }
+const confirmLogout = () => {
+  // 使用 Store Action 清除数据和 token
+  userStore.clearUserData()
+  router.push('/login')
 }
+
+// ------------------------------------
+// 5. 生命周期
+// ------------------------------------
 
 onMounted(() => {
   loadUserInfo()
@@ -564,5 +571,34 @@ onMounted(() => {
     width: 64px;
     height: 64px;
   }
+}
+
+/* 验证码按钮和输入框的定制样式 */
+.code-group .input-with-button {
+  display: flex;
+  gap: 10px;
+}
+.code-group input {
+  flex-grow: 1;
+}
+.code-group .code-button {
+  min-width: 110px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft, #e8ecec);
+  background: var(--surface-muted, #f8faf9);
+  font-size: 14px;
+  color: var(--text-secondary, #4b5563);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.code-group .code-button:hover:not(:disabled) {
+  background: #fff;
+  border-color: var(--brand-primary, #22ee99);
+  color: var(--brand-primary, #22ee99);
+}
+.code-group .code-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 </style>

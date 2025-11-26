@@ -1,54 +1,46 @@
 package com.project.login.model.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import lombok.Data;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.elasticsearch.annotations.Field;
+import org.springframework.data.elasticsearch.annotations.FieldType;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
-@Entity
-@Table(name = "notes")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Data
+@Document(indexName = "notes")
 public class NoteEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long id; // MySQL note.id
 
-    @Column(nullable = false)
+    @Field(type = FieldType.Text)
     private String title;
 
-    @Column
-    private String filename; // MinIO 文件名
+    @Field(type = FieldType.Text)
+    private String contentSummary; // 对应 content_summary
 
-    @Column(name = "file_type", length = 10)
-    private String fileType;
+    @Field(type = FieldType.Keyword)
+    private List<String> tags; // 笔记空间/笔记本标签
 
-    // --- 所属笔记本 ---
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "notebook_id", nullable = false)
-    private NotebookEntity notebook;
+    @Field(type = FieldType.Keyword)
+    private String authorName;
 
-    // --- 创建时间和更新时间 ---
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
+    @Field(type = FieldType.Integer)
+    private Integer viewCount;
 
-    @Column(name = "updated_at", nullable = false)
+    @Field(type = FieldType.Integer)
+    private Integer likeCount;
+
+    @Field(type = FieldType.Integer)
+    private Integer favoriteCount;
+
+    @Field(type = FieldType.Integer)
+    private Integer commentCount;
+
+    @Field(type = FieldType.Date)
     private LocalDateTime updatedAt;
 
-    // --- 自动赋值 ---
-    @PrePersist
-    protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
 }

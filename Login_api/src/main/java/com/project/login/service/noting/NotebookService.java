@@ -9,9 +9,6 @@ import com.project.login.model.dataobject.NoteSpaceDO;
 import com.project.login.model.dataobject.NotebookDO;
 import com.project.login.model.dataobject.TagDO;
 import com.project.login.model.dto.notebook.*;
-import com.project.login.model.entity.NoteSpaceEntity;
-import com.project.login.model.entity.TagEntity;
-import com.project.login.model.entity.NotebookEntity; // 假设这是 DO/Entity
 import com.project.login.model.vo.NotebookVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -20,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service

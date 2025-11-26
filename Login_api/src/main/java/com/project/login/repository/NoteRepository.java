@@ -1,28 +1,30 @@
 package com.project.login.repository;
 
 import com.project.login.model.entity.NoteEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;
 import org.springframework.stereotype.Repository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
-public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
+public interface NoteRepository extends ElasticsearchRepository<NoteEntity, Long> {
 
-    // 根据笔记本ID查询笔记
-    List<NoteEntity> findByNotebookId(Long notebookId);
+    // 根据完整标题查找
+    Optional<NoteEntity> findByTitle(String title);
 
-    // 根据笔记本ID删除笔记
-    void deleteByNotebookId(Long notebookId);
+    // 根据id查找
+    @NotNull
+    Optional<NoteEntity> findById(@NotNull Long id);
 
-    @Query("select distinct n from NoteEntity n " +
-            "join fetch n.notebook nb " +
-            "join fetch nb.space s " +
-            "join fetch s.user u " +
-            "join fetch nb.tag t " +
-            "where (:author is null or lower(u.username) like lower(concat('%', :author, '%'))) " +
-            "and (:tag is null or lower(t.name) like lower(concat('%', :tag, '%')))")
-    List<NoteEntity> searchForAdmin(@Param("author") String author, @Param("tag") String tag);
+    // 模糊搜索标题（like %title%）
+    List<NoteEntity> findByTitleContaining(String title);
+
+    // 根据作者查找笔记
+    List<NoteEntity> findByAuthorName(String authorName);
+
+    // 根据标签搜索（匹配任意一个标签）
+    List<NoteEntity> findByTagsIn(Collection<List<String>> tags);
 }

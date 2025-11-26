@@ -94,14 +94,17 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import SearchView from '../components/user/SearchView.vue'
 import WorkspaceView from '../components/user/WorkspaceView.vue'
 import ProfileView from '../components/user/ProfileView.vue'
 import FavoritesView from '../components/user/FavoritesView.vue'
 import CommentsView from '../components/user/CommentsView.vue'
-// 引入新的编辑器组件
 import NoteEditorView from '../components/user/NoteEditorView.vue'
+import { useRouter, useRoute } from 'vue-router'
+
+const router = useRouter() // 【新增】
+const route = useRoute()
 
 const tabs = [
   { value: 'follow', label: '关注', desc: 'Follow' },
@@ -122,7 +125,6 @@ const editingNotebookName = ref(null);
 const editingNotebookList = ref([]); // 使用数组类型
 
 // 处理 WorkspaceView 发出的“打开笔记本”事件
-// 将参数重命名为 payload，以反映它是一个包含多个数据的对象
 const handleOpenNotebook = (payload) => {
   // 切换到编辑模式
 
@@ -135,6 +137,7 @@ const handleOpenNotebook = (payload) => {
     editingNotebookList.value = payload.notebookList;
 
   } else {
+
     console.error("打开笔记本失败：事件载荷中缺少 notebookId 字段。");
     editingNotebookId.value = null;
     editingSpaceId.value = null;

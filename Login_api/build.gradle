@@ -25,6 +25,16 @@ configurations {
     }
 }
 
+ext {
+    elasticVersion = "8.18.1"
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "co.elastic.clients:elasticsearch-java:${elasticVersion}"
+    }
+}
+
 dependencies {
     // ------------------- Spring Boot 核心 -------------------
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -96,9 +106,13 @@ dependencies {
 
     // ------------------- Elasticsearch Client -------------------
     implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+    implementation "co.elastic.clients:elasticsearch-java:${elasticVersion}"
 
     // ------------------- PageHelper -------------------
     implementation 'com.github.pagehelper:pagehelper-spring-boot-starter:2.0.0'
+
+    implementation 'org.apache.pdfbox:pdfbox:2.0.30'
+
 }
 
 hibernate {

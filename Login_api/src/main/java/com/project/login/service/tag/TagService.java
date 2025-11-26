@@ -26,4 +26,14 @@ public class TagService{
 
         return convert.toVO(existing);
     }
+
+    @Transactional
+    public String getTagNameById(Long id) {
+
+        TagDO existing = tagMapper.selectTagById(id);
+        if (existing == null) throw new RuntimeException("标签不存在");
+
+        return existing.getName();
+    }
+
 }

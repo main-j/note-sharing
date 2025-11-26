@@ -41,6 +41,6 @@ public class NotebookEntity {
 
     // --- 笔记集合 ---
     @OneToMany(mappedBy = "notebook", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<NoteEntity> notes;
+    private List<NoteJpaEntity> notes;
 
 }

@@ -2,6 +2,7 @@ package com.project.login.service.admin;
 
 import com.project.login.model.request.admin.UserAdminUpdateRequest;
 import com.project.login.model.entity.UserEntity;
+import com.project.login.model.dataobject.UserDO;
 import com.project.login.mapper.NoteSpaceMapper;
 import com.project.login.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -19,10 +20,11 @@ public class AdminUserService {
 
     @Transactional
     public UserEntity updateUser(Long id, UserAdminUpdateRequest req) {
-        UserEntity user = userMapper.selectById(id);
-        if (user == null) {
+        UserDO userDO = userMapper.selectById(id);
+        if (userDO == null) {
             throw new IllegalArgumentException("用户不存在");
         }
+        UserEntity user = toEntity(userDO);
 
         if (req.getUsername() != null && !Objects.equals(user.getUsername(), req.getUsername())) {
             user.setUsername(req.getUsername());
@@ -45,16 +47,30 @@ public class AdminUserService {
         }
 
         userMapper.updateUser(user);
-        return userMapper.selectById(id);
+        return toEntity(userMapper.selectById(id));
     }
 
     @Transactional
     public void deleteUser(Long id) {
-        UserEntity user = userMapper.selectById(id);
+        UserDO user = userMapper.selectById(id);
         if (user == null) {
             throw new IllegalArgumentException("用户不存在");
         }
         noteSpaceMapper.selectByUser(id).forEach(space -> noteSpaceMapper.deleteNoteSpace(space.getId()));
         userMapper.deleteUserById(id);
+    }
+
+    private UserEntity toEntity(UserDO d) {
+        if (d == null) return null;
+        UserEntity e = new UserEntity();
+        e.setId(d.getId());
+        e.setUsername(d.getUsername());
+        e.setStudentNumber(d.getStudentNumber());
+        e.setEmail(d.getEmail());
+        e.setPassword_hash(d.getPassword_hash());
+        e.setEnabled(d.isEnabled());
+        e.setCreatedAt(d.getCreatedAt());
+        e.setUpdatedAt(d.getUpdatedAt());
+        return e;
     }
 }

@@ -128,7 +128,7 @@ const userStore = useUserStore();
 
 // 基础 API 地址
 const BASE_PATH = "/noting";
-const CURRENT_USER_ID = computed(() => userStore.currentUserId);
+const CURRENT_USER_ID = computed(() => userStore.userInfo.id);
 
 /* ===============================
  数据
