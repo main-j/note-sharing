@@ -1,3 +1,0 @@
-本后端已连接了elasticsearch 、 rabbitmq、  redis、   mongodb、   minio 、 mybatis
-
-如若没有配置好这些环境，后端无法运行
