@@ -14,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
@@ -85,8 +87,14 @@ public class NoteService {
 
         event.setUpdatedAt(LocalDateTime.now());
 
-        eventPublisher.sendEsNoteEvent(event);
-        eventPublisher.sendAuditNoteEvent(note.getId());
+        Long auditNoteId = note.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.sendEsNoteEvent(event);
+                eventPublisher.sendAuditNoteEvent(auditNoteId);
+            }
+        });
 
         return convert.toVO(note);
     }
@@ -125,8 +133,14 @@ public class NoteService {
 
         event.setUpdatedAt(LocalDateTime.now());
 
-        eventPublisher.sendEsNoteEvent(event);
-        eventPublisher.sendAuditNoteEvent(existing.getId());
+        Long auditNoteId2 = existing.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.sendEsNoteEvent(event);
+                eventPublisher.sendAuditNoteEvent(auditNoteId2);
+            }
+        });
 
         return convert.toVO(existing);
     }
@@ -146,8 +160,14 @@ public class NoteService {
         event.setNoteId(existing.getId());
         event.setAction(NoteActionType.DELETE);
 
-        eventPublisher.sendEsNoteEvent(event);
-        eventPublisher.sendAuditNoteEvent(existing.getId());
+        Long auditNoteId3 = existing.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.sendEsNoteEvent(event);
+                eventPublisher.sendAuditNoteEvent(auditNoteId3);
+            }
+        });
     }
 
 
