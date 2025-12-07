@@ -47,6 +47,32 @@ public class ContentSummaryService {
         }
     }
 
+    public String extractQuickFilterText(MultipartFile file) {
+        String filename = Objects.requireNonNull(file.getOriginalFilename()).toLowerCase();
+        try {
+            if (filename.endsWith(".md")) {
+                String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+                content = content.replaceAll("(?m)^#+\\s*", "");
+                content = content.replaceAll("!\\[.*?\\]\\(.*?\\)", "");
+                content = content.replaceAll("\\[.*?\\]\\(.*?\\)", "");
+                content = content.replaceAll("\\s+", " ");
+                return content.length() > 10000 ? content.substring(0, 10000) : content;
+            } else if (filename.endsWith(".pdf")) {
+                try (PDDocument document = PDDocument.load(file.getInputStream())) {
+                    PDFTextStripper stripper = new PDFTextStripper();
+                    stripper.setStartPage(1);
+                    stripper.setEndPage(Math.min(2, document.getNumberOfPages()));
+                    String text = stripper.getText(document).replaceAll("\\s+", " ");
+                    return text.length() > 8000 ? text.substring(0, 8000) : text;
+                }
+            } else {
+                throw new RuntimeException("不支持的文件类型: " + filename);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("快速过滤文本提取失败", e);
+        }
+    }
+
     /**
      * 提取 Markdown 文件摘要
      */

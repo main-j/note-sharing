@@ -8,6 +8,7 @@ import com.project.login.model.vo.SensitiveCheckResult;
 import com.project.login.service.minio.MinioService;
 import com.project.login.service.noting.ContentSummaryService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SensitiveWordServiceImpl implements SensitiveWordService {
 
     private final NoteMapper noteMapper;
@@ -76,6 +78,7 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
 
     private SensitiveCheckResult callLLM(String text) {
         long start = System.currentTimeMillis();
+        log.info("【LLM审查】开始调用，文本长度: {}", text.length());
         RestTemplate rt = new RestTemplate();
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(5000);
@@ -127,19 +130,25 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
         long delay = 200;
         for (int i = 0; i < attempts; i++) {
             try {
+                log.info("【LLM审查】发起请求，尝试次数: {}/{}", i + 1, attempts);
                 body = rt.postForObject(url, entity, String.class);
+                log.info("【LLM审查】请求成功，耗时: {}ms", System.currentTimeMillis() - start);
                 break;
             } catch (Exception ex) {
+                log.warn("【LLM审查】请求失败 (第 {} 次尝试): {}", i + 1, ex.getMessage());
                 if (i == attempts - 1) {
+                    log.error("【LLM审查】所有重试均失败", ex);
                     SensitiveCheckResult err = new SensitiveCheckResult();
                     err.setStatus("ERROR");
                     err.setModel("modelscope:" + modelId);
                     err.setCheckedAt(Instant.now().toString());
-                    err.setMessage("LLM请求失败: " + ex.getClass().getSimpleName());
+                    err.setMessage("LLM请求失败: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
                     err.setDurationMs(System.currentTimeMillis() - start);
                     return err;
                 }
-                try { Thread.sleep(delay); } catch (InterruptedException ignored) {}
+                try { Thread.sleep(delay); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
                 delay *= 2;
             }
         }
@@ -178,6 +187,7 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
                 if (json != null && json.isObject()) {
                     fillFromJson(result, json);
                 } else {
+                    log.warn("【LLM审查】无法解析非结构化响应: {}", normalized);
                     result.setStatus("FLAGGED");
                     result.setRiskLevel("MEDIUM");
                     result.setScore(50.0);
@@ -201,6 +211,7 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
                 }
             }
         } catch (Exception e) {
+            log.error("【LLM审查】结果解析失败: body=" + body, e);
             result.setStatus("ERROR");
             result.setMessage("解析失败");
         }

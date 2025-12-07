@@ -50,4 +50,14 @@ public class RabbitConfig {
     public Queue noteMongoQueue() {
         return new Queue("note.mongo.queue", true);
     }
+
+    @Bean
+    public Queue noteAuditQueue() {
+        return new Queue("note.audit.queue", true);
+    }
+
+    @Bean
+    public Queue noteModerationAlertQueue() {
+        return new Queue("note.moderation.alert.queue", true);
+    }
 }

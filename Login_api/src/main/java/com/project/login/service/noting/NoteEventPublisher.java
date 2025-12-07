@@ -22,4 +22,8 @@ public class NoteEventPublisher {
     public void sendMongoNoteEvent(EsNoteEvent event) {
         rabbitTemplate.convertAndSend("note.mongo.queue", event);
     }
+
+    public void sendAuditNoteEvent(Long noteId) {
+        rabbitTemplate.convertAndSend("note.audit.queue", String.valueOf(noteId));
+    }
 }

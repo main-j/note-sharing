@@ -32,6 +32,7 @@ public class NoteService {
     private final TagService tagService;
     private final NoteEventPublisher eventPublisher;
     private final ContentSummaryService contentSummaryService;
+    private final com.project.login.service.sensitive.FastFilterService fastFilterService;
 
     @Qualifier("noteConvert")
     private final NoteConvert convert;
@@ -48,6 +49,11 @@ public class NoteService {
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
         String contentSummary = contentSummaryService.extractContentSummary(file);
+        String quickText_create = contentSummaryService.extractQuickFilterText(file);
+        List<String> hits_create = fastFilterService.match(quickText_create);
+        if (!hits_create.isEmpty()) {
+            throw new RuntimeException("命中违禁词: " + hits_create.toString());
+        }
 
         //minio 名字
         String name = minioservice.uploadFile(file);
@@ -80,6 +86,7 @@ public class NoteService {
         event.setUpdatedAt(LocalDateTime.now());
 
         eventPublisher.sendEsNoteEvent(event);
+        eventPublisher.sendAuditNoteEvent(note.getId());
 
         return convert.toVO(note);
     }
@@ -94,6 +101,11 @@ public class NoteService {
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
         String contentSummary = contentSummaryService.extractContentSummary(file);
+        String quickText_update = contentSummaryService.extractQuickFilterText(file);
+        List<String> hits_update = fastFilterService.match(quickText_update);
+        if (!hits_update.isEmpty()) {
+            throw new RuntimeException("命中违禁词: " + hits_update.toString());
+        }
         String name = minioservice.uploadFile(file);
 
         existing.setTitle(dto.getMeta().getTitle());
@@ -114,6 +126,7 @@ public class NoteService {
         event.setUpdatedAt(LocalDateTime.now());
 
         eventPublisher.sendEsNoteEvent(event);
+        eventPublisher.sendAuditNoteEvent(existing.getId());
 
         return convert.toVO(existing);
     }
@@ -134,6 +147,7 @@ public class NoteService {
         event.setAction(NoteActionType.DELETE);
 
         eventPublisher.sendEsNoteEvent(event);
+        eventPublisher.sendAuditNoteEvent(existing.getId());
     }
 
 
@@ -178,6 +192,11 @@ public class NoteService {
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
         String contentSummary = contentSummaryService.extractContentSummary(file);
+        String quickText_upload = contentSummaryService.extractQuickFilterText(file);
+        List<String> hits_upload = fastFilterService.match(quickText_upload);
+        if (!hits_upload.isEmpty()) {
+            throw new RuntimeException("命中违禁词: " + hits_upload.toString());
+        }
         String name = minioservice.uploadFile(file);
         String url = minioservice.getFileUrl(name);
 
