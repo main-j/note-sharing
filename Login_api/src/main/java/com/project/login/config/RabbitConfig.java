@@ -48,4 +48,10 @@ public class RabbitConfig {
     public Queue noteMongoQueue() {
         return new Queue("note.mongo.queue", true);
     }
+
+    public static final String USER_BEHAVIOR_QUEUE = "user_behavior_queue";
+    @Bean
+    public Queue userBehaviorQueue() {
+        return new Queue(USER_BEHAVIOR_QUEUE, true); // durable queue
+    }
 }
