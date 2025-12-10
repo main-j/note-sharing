@@ -5,6 +5,8 @@ import com.project.login.model.dto.search.NoteSearchDTO;
 import com.project.login.model.request.search.NoteSearchRequest;
 import com.project.login.model.response.StandardResponse;
 import com.project.login.model.vo.NoteSearchVO;
+import com.project.login.model.vo.qa.QuestionVO;
+import com.project.login.service.search.SearchQAService;
 import com.project.login.service.search.SearchService;
 import com.project.login.service.flink.userbahavior.UserSearchService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,13 +18,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Search", description = "Search notes using Elasticsearch")
+@Tag(name = "Search", description = "Search notes and questions using Elasticsearch")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/search")
 public class SearchController {
 
     private final SearchService searchService;
+    private final SearchQAService searchQAService;
 
     @Qualifier("searchConvert")
     private final SearchConvert convert;
@@ -46,5 +49,23 @@ public class SearchController {
 
         return StandardResponse.success(results);
     }
+
+    @Operation(summary = "Search questions (QA) by keyword with score ranking")
+    @GetMapping("/questions")
+    public StandardResponse<List<QuestionVO>> searchQuestions(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Long userId
+    ) {
+        // 1. 调用 QA 搜索 Service
+        List<QuestionVO> results = searchQAService.searchQuestions(keyword);
+
+        // 2. 记录用户搜索行为
+        if (userId != null && keyword != null && !keyword.isBlank()) {
+            userSearchService.recordSearch(userId, keyword);
+        }
+
+        return StandardResponse.success(results);
+    }
 }
+
 
