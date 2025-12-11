@@ -48,5 +48,11 @@ export const deleteReply = (questionId, answerId, commentId, replyId) =>
 export const likeReply = (userId, questionId, answerId, commentId, replyId) =>
   service.post('/qa/reply/like', { userId, questionId, answerId, commentId, replyId }).then(res => res.data.data)
 
+// 搜索问答
+export const searchQuestions = (keyword, userId) =>
+  service.get('/search/questions', {
+    params: { keyword, userId }
+  }).then(res => res.data.data)
+
 
 

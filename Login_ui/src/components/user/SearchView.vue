@@ -1,6 +1,30 @@
 <template>
   <div class="search-page">
     <section class="results-panel">
+      <!-- 搜索类型切换按钮 -->
+      <div class="search-type-switcher">
+        <button
+          :class="['type-btn', { active: searchType === 'notes' }]"
+          @click="switchSearchType('notes')"
+        >
+          <svg class="type-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2.5 1A1.5 1.5 0 001 2.5v11A1.5 1.5 0 002.5 15h6.086a1.5 1.5 0 001.06-.44l4.915-4.914A1.5 1.5 0 0015 7.586V2.5A1.5 1.5 0 0013.5 1h-11zM2 2.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v7.086a.5.5 0 01-.146.353l-4.915 4.915a.5.5 0 01-.353.146H2.5a.5.5 0 01-.5-.5v-11z"/>
+            <path d="M5.5 6a.5.5 0 000 1h5a.5.5 0 000-1h-5zM5 8.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5z"/>
+          </svg>
+          笔记
+        </button>
+        <button
+          :class="['type-btn', { active: searchType === 'qa' }]"
+          @click="switchSearchType('qa')"
+        >
+          <svg class="type-icon" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 15A7 7 0 118 1a7 7 0 010 14zm0 1A8 8 0 108 0a8 8 0 000 16z"/>
+            <path d="M5.255 5.786a.237.237 0 00.241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 00.25.246h.811a.25.25 0 00.25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.326 0-2.786.647-2.754 2.533zm1.326 7.443c-.22 0-.403.18-.403.399 0 .218.18.399.403.399a.397.397 0 00.399-.399c0-.22-.18-.399-.399-.399z"/>
+          </svg>
+          问答
+        </button>
+      </div>
+
       <div v-if="loading" class="state-card">
         <span class="loader" aria-hidden="true"></span>
         <p>搜索中...</p>
@@ -12,22 +36,27 @@
           <p class="results-count">找到 <strong>{{ searchResults.length }}</strong> 条相关结果</p>
           <p class="search-keyword" v-if="searchQuery">搜索关键词：<strong>{{ searchQuery }}</strong></p>
         </div>
+        <!-- 笔记搜索结果 -->
         <article
           v-for="result in searchResults"
-          :key="result.noteId"
+          :key="searchType === 'notes' ? result.noteId : result.questionId"
           class="result-card"
           @click="handleResultClick(result)"
         >
           <div class="result-content">
             <h3 class="result-title" v-html="highlightKeyword(result.title)"></h3>
-            <p class="result-summary" v-html="highlightKeyword(result.contentSummary || result.title)"></p>
+            <p class="result-summary" v-html="highlightKeyword(getResultSummary(result))"></p>
+            <!-- 问答标签 -->
+            <div v-if="searchType === 'qa' && result.tags && result.tags.length" class="tag-list">
+              <span v-for="tag in result.tags" :key="tag" class="tag-chip">#{{ tag }}</span>
+            </div>
             <div class="result-meta">
               <div class="meta-left">
                 <span class="meta-author">
                   <svg class="meta-icon" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M8 8a3 3 0 100-6 3 3 0 000 6zm2-3a2 2 0 11-4 0 2 2 0 014 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
                   </svg>
-                  {{ result.authorName || '未知作者' }}
+                  {{ getAuthorName(result) }}
                 </span>
                 <span class="meta-time">
                   <svg class="meta-icon" viewBox="0 0 16 16" fill="currentColor">
@@ -38,7 +67,7 @@
                 </span>
               </div>
               <div class="meta-right">
-                <span class="meta-stat">
+                <span v-if="searchType === 'notes'" class="meta-stat">
                   <svg class="meta-icon" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M8 4a.5.5 0 01.5.5v3h3a.5.5 0 010 1h-3v3a.5.5 0 01-1 0v-3h-3a.5.5 0 010-1h3v-3A.5.5 0 018 4z"/>
                   </svg>
@@ -57,12 +86,19 @@
                   </svg>
                   {{ result.favoriteCount || 0 }} 收藏
                 </span>
-                <span class="meta-stat">
+                <span v-if="searchType === 'notes'" class="meta-stat">
                   <svg class="meta-icon" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M2.5 1A1.5 1.5 0 001 2.5v11A1.5 1.5 0 002.5 15h6.086a1.5 1.5 0 001.06-.44l4.915-4.914A1.5 1.5 0 0015 7.586V2.5A1.5 1.5 0 0013.5 1h-11zM2 2.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v7.086a.5.5 0 01-.146.353l-4.915 4.915a.5.5 0 01-.353.146H2.5a.5.5 0 01-.5-.5v-11z"/>
                     <path d="M5.5 6a.5.5 0 000 1h5a.5.5 0 000-1h-5zM5 8.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5z"/>
                   </svg>
                   {{ result.commentCount || 0 }} 评论
+                </span>
+                <span v-if="searchType === 'qa'" class="meta-stat">
+                  <svg class="meta-icon" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2.5 1A1.5 1.5 0 001 2.5v11A1.5 1.5 0 002.5 15h6.086a1.5 1.5 0 001.06-.44l4.915-4.914A1.5 1.5 0 0015 7.586V2.5A1.5 1.5 0 0013.5 1h-11zM2 2.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v7.086a.5.5 0 01-.146.353l-4.915 4.915a.5.5 0 01-.353.146H2.5a.5.5 0 01-.5-.5v-11z"/>
+                    <path d="M5.5 6a.5.5 0 000 1h5a.5.5 0 000-1h-5zM5 8.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5z"/>
+                  </svg>
+                  {{ result.answers?.length || 0 }} 回答
                 </span>
               </div>
             </div>
@@ -77,16 +113,17 @@
 
       <div v-else class="state-card placeholder">
         <p>在上方输入关键词开始搜索</p>
-        <small>支持搜索：笔记标题、笔记本名称、空间名称、标签、用户名</small>
+        <small>{{ searchType === 'notes' ? '支持搜索：笔记标题、笔记本名称、空间名称、标签、用户名' : '支持搜索：问题标题、问题内容、标签' }}</small>
       </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { searchNotes, changeNoteStat, getFileUrlByNoteId } from '@/api/note'
+import { searchQuestions } from '@/api/qa'
 import { useUserStore } from '@/stores/user'
 import { formatTime } from '@/utils/time'
 
@@ -107,6 +144,7 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const loading = ref(false)
 const hasSearched = ref(false)
+const searchType = ref('notes') // 'notes' 或 'qa'，默认搜索笔记
 const VIEW_CACHE_PREFIX = 'note_view_ts'
 
 const getViewCacheKey = (noteId, userId) => {
@@ -147,6 +185,55 @@ const getDisplayTime = (result) => {
   }
   // 如果时间字段为空，返回加载中状态（会在fetchNoteTimes中异步更新）
   return result._timeLoading ? '加载中...' : '时间未知'
+}
+
+// 获取结果摘要
+const getResultSummary = (result) => {
+  if (searchType.value === 'notes') {
+    return result.contentSummary || result.title || ''
+  } else {
+    // 问答类型，显示问题内容
+    return result.content || result.title || ''
+  }
+}
+
+// 获取作者名称
+const getAuthorName = (result) => {
+  if (searchType.value === 'notes') {
+    return result.authorName || '未知作者'
+  } else {
+    return result.authorId ? `用户 #${result.authorId}` : '未知用户'
+  }
+}
+
+// 切换搜索类型
+const switchSearchType = (type) => {
+  if (searchType.value === type) return
+  
+  // 立即清空结果和状态
+  searchResults.value = []
+  hasSearched.value = false
+  loading.value = false
+  
+  // 更新搜索类型
+  searchType.value = type
+  
+  // 更新URL中的搜索类型
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      searchType: type
+    }
+  })
+  
+  // 如果有搜索关键词，切换类型后自动搜索
+  if (searchQuery.value.trim()) {
+    // 使用 nextTick 确保状态更新完成后再搜索
+    nextTick(() => {
+      handleSearch()
+    })
+  }
 }
 
 // 批量获取笔记时间信息
@@ -195,10 +282,34 @@ const highlightKeyword = (text) => {
   return text.replace(regex, '<mark class="highlight">$1</mark>')
 }
 
-// 处理搜索结果点击 - 跳转到笔记详情页
+// 处理搜索结果点击
 const handleResultClick = async (result) => {
-  if (!result || !result.noteId) {
+  if (!result) {
     console.error('搜索结果数据无效:', result)
+    return
+  }
+  
+  // 如果是问答类型，跳转到问答详情页
+  if (searchType.value === 'qa') {
+    if (!result.questionId) {
+      console.error('问答结果数据无效:', result)
+      return
+    }
+    
+    router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        tab: 'qa-detail',
+        questionId: result.questionId
+      }
+    })
+    return
+  }
+  
+  // 笔记类型，跳转到笔记详情页
+  if (!result.noteId) {
+    console.error('笔记结果数据无效:', result)
     return
   }
   
@@ -274,8 +385,14 @@ const handleSearch = async () => {
   const keyword = searchQuery.value.trim()
   if (!keyword) return
   
+  // 保存当前的搜索类型，避免异步执行时类型改变
+  const currentSearchType = searchType.value
+  
   loading.value = true
   hasSearched.value = true
+  
+  // 立即清空之前的结果，避免显示错误类型的结果
+  searchResults.value = []
   
   try {
     const userId = userStore.userInfo?.id
@@ -285,27 +402,48 @@ const handleSearch = async () => {
       return
     }
     
-    const results = await searchNotes(keyword, userId)
-    searchResults.value = results || []
-    
-    // 批量获取没有时间的笔记的时间信息
-    if (searchResults.value.length > 0) {
-      await fetchNoteTimes(searchResults.value)
+    // 使用保存的搜索类型，而不是响应式的 searchType.value
+    if (currentSearchType === 'notes') {
+      // 搜索笔记
+      const results = await searchNotes(keyword, userId)
+      // 再次检查搜索类型是否改变（防止切换类型导致的竞态）
+      if (searchType.value === 'notes') {
+        searchResults.value = results || []
+        
+        // 批量获取没有时间的笔记的时间信息
+        if (searchResults.value.length > 0) {
+          await fetchNoteTimes(searchResults.value)
+        }
+      }
+    } else {
+      // 搜索问答
+      const results = await searchQuestions(keyword, userId)
+      // 再次检查搜索类型是否改变（防止切换类型导致的竞态）
+      if (searchType.value === 'qa') {
+        searchResults.value = results || []
+      }
     }
     
-    // 更新URL中的关键词
+    // 更新URL中的关键词和搜索类型
     router.replace({
       path: route.path,
       query: {
         ...route.query,
-        keyword: keyword
+        keyword: keyword,
+        searchType: searchType.value
       }
     })
   } catch (error) {
     console.error('搜索失败:', error)
-    searchResults.value = []
+    // 只有在搜索类型没有改变时才清空结果
+    if (searchType.value === currentSearchType) {
+      searchResults.value = []
+    }
   } finally {
-    loading.value = false
+    // 只有在搜索类型没有改变时才更新loading状态
+    if (searchType.value === currentSearchType) {
+      loading.value = false
+    }
   }
 }
 
@@ -317,20 +455,94 @@ watch(() => props.initialKeyword, (newKeyword) => {
   }
 }, { immediate: true })
 
-// 监听路由中的关键词
-watch(() => route.query.keyword, (newKeyword) => {
+// 监听路由中的关键词和搜索类型
+watch(() => route.query.keyword, (newKeyword, oldKeyword) => {
   if (newKeyword && newKeyword !== searchQuery.value) {
     searchQuery.value = newKeyword
-    if (!hasSearched.value) {
+    
+    // 当关键词变化时，检查 URL 中的 searchType
+    // 如果 URL 中没有 searchType 或 searchType 是 'notes'，重置为笔记类型
+    const urlSearchType = route.query.searchType
+    if (!urlSearchType || urlSearchType === 'notes') {
+      // 如果当前类型不是笔记，重置为笔记
+      if (searchType.value !== 'notes') {
+        searchResults.value = []
+        hasSearched.value = false
+        searchType.value = 'notes'
+      }
+    } else if (urlSearchType === 'qa') {
+      // 如果 URL 中明确指定了问答类型，使用问答类型
+      if (searchType.value !== 'qa') {
+        searchResults.value = []
+        hasSearched.value = false
+        searchType.value = 'qa'
+      }
+    }
+    
+    // 执行搜索（关键词变化时总是重新搜索）
+    nextTick(() => {
       handleSearch()
+    })
+  }
+}, { immediate: false })
+
+watch(() => route.query.searchType, (newType, oldType) => {
+  if (newType && (newType === 'notes' || newType === 'qa')) {
+    // 如果类型改变，清空结果并重新搜索
+    if (searchType.value !== newType) {
+      searchResults.value = []
+      hasSearched.value = false
+      searchType.value = newType
+      // 如果有搜索关键词，重新搜索
+      if (searchQuery.value.trim()) {
+        nextTick(() => {
+          handleSearch()
+        })
+      }
+    }
+  } else if (!newType) {
+    // 如果 URL 中没有 searchType，重置为默认的笔记类型
+    if (searchType.value !== 'notes') {
+      searchResults.value = []
+      hasSearched.value = false
+      searchType.value = 'notes'
+      // 如果有搜索关键词，重新搜索
+      if (searchQuery.value.trim()) {
+        nextTick(() => {
+          handleSearch()
+        })
+      }
     }
   }
-})
+}, { immediate: true })
 
 // 组件挂载时，如果有初始关键词则执行搜索
 onMounted(() => {
+  // 从路由中恢复搜索类型，如果没有则默认为"笔记"
+  const urlSearchType = route.query.searchType
+  if (urlSearchType === 'qa' || urlSearchType === 'notes') {
+    searchType.value = urlSearchType
+  } else {
+    // 如果没有 searchType 参数，默认使用"笔记"
+    searchType.value = 'notes'
+    // 如果 URL 中没有 searchType，但有关键词，更新 URL 以明确设置 searchType
+    if (route.query.keyword && !urlSearchType) {
+      router.replace({
+        path: route.path,
+        query: {
+          ...route.query,
+          searchType: 'notes'
+        }
+      })
+    }
+  }
+  
   if (props.initialKeyword) {
     searchQuery.value = props.initialKeyword
+    // 确保搜索类型是笔记（从主页搜索框搜索时）
+    if (searchType.value !== 'notes') {
+      searchType.value = 'notes'
+    }
     handleSearch()
   } else if (route.query.keyword) {
     searchQuery.value = route.query.keyword
@@ -369,6 +581,46 @@ onMounted(() => {
 
 .results-panel {
   min-height: 400px;
+}
+
+.search-type-switcher {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.type-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.type-btn:hover {
+  background: var(--line-soft);
+  border-color: var(--brand-primary);
+  color: var(--text-strong);
+}
+
+.type-btn.active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #fff;
+}
+
+.type-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .results-header {
@@ -492,6 +744,23 @@ onMounted(() => {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
+}
+
+.tag-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.tag-chip {
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .state-card {

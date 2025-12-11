@@ -180,9 +180,17 @@ const currentTab = ref(getTabFromRoute())
 // 当 currentTab 改变时，同步更新 URL 查询参数
 watch(currentTab, (newTab, oldTab) => {
   if (route.query.tab !== newTab) {
+    const newQuery = { ...route.query, tab: newTab }
+    
+    // 当切换到搜索 tab 时，如果没有 keyword 或 searchType，清除 searchType
+    // 这样确保从主页搜索框搜索时，searchType 会被设置为 'notes'
+    if (newTab === 'search' && !route.query.keyword) {
+      delete newQuery.searchType
+    }
+    
     router.replace({
       path: route.path,
-      query: { ...route.query, tab: newTab }
+      query: newQuery
     })
   }
   // 当切换离开 note-detail tab 时，清除笔记详情相关状态
@@ -498,13 +506,14 @@ const handleSearch = () => {
   searchKeywordFromRoute.value = keyword
   currentTab.value = 'search'
   
-  // 更新URL参数
+  // 更新URL参数，重置搜索类型为默认的"笔记"
   router.replace({
     path: route.path,
     query: {
       ...route.query,
       tab: 'search',
-      keyword: keyword
+      keyword: keyword,
+      searchType: 'notes' // 从主页搜索框搜索时，默认搜索笔记
     }
   })
 }
