@@ -57,6 +57,17 @@
               </svg>
               收藏 {{ question.favoriteCount || 0 }}
             </button>
+            <button
+              v-if="question.authorId === userStore.userInfo?.id"
+              class="action-btn delete-action-btn"
+              @click="handleDeleteQuestion"
+            >
+              <svg class="action-icon" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+                <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+              </svg>
+              删除问题
+            </button>
           </div>
         </div>
 
@@ -101,28 +112,126 @@
                   {{ formatTime(answer.createdAt) }}
                 </span>
               </div>
-              <div class="answer-content">{{ answer.content }}</div>
-              <div class="answer-actions">
-                <button class="action-btn" @click="handleLikeAnswer(answer)">
-                  <svg class="action-icon" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M8 4a.5.5 0 01.5.5v3h3a.5.5 0 010 1h-3v3a.5.5 0 01-1 0v-3h-3a.5.5 0 010-1h3v-3A.5.5 0 018 4z"/>
-                  </svg>
-                  赞同 {{ answer.likeCount || 0 }}
-                </button>
+              <div class="answer-content-wrapper">
+                <div class="answer-content">{{ answer.content }}</div>
+                <div class="answer-actions">
+                  <button class="text-action-btn" @click="handleLikeAnswer(answer)">
+                    赞同 {{ answer.likeCount || 0 }}
+                  </button>
+                  <button class="text-action-btn" @click="toggleCommentInput(answer.answerId)">
+                    评论 {{ answer.comments?.length || 0 }}
+                  </button>
+                  <button
+                    v-if="answer.authorId === userStore.userInfo?.id"
+                    class="text-action-btn delete-text-btn"
+                    @click="handleDeleteAnswer(answer)"
+                    title="删除回答"
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
 
-              <!-- 评论 -->
+              <!-- 评论输入框 -->
+              <div v-if="activeCommentAnswerId === answer.answerId" class="comment-input-section">
+                <textarea
+                  v-model="commentInputs[answer.answerId]"
+                  rows="3"
+                  placeholder="写下你的评论..."
+                  class="comment-textarea"
+                ></textarea>
+                <div class="comment-input-actions">
+                  <button class="ghost-btn" @click="cancelComment(answer.answerId)">取消</button>
+                  <button class="primary-btn" @click="handleCreateComment(answer)">发布评论</button>
+                </div>
+              </div>
+
+              <!-- 评论列表 -->
               <div v-if="answer.comments && answer.comments.length" class="comments-section">
                 <div
                   v-for="comment in answer.comments"
                   :key="comment.commentId"
                   class="comment-item"
                 >
-                  <div class="comment-meta">
-                    <span>评论者 #{{ comment.authorId }}</span>
-                    <span>{{ formatTime(comment.createdAt) }}</span>
+                  <div class="comment-header">
+                    <div class="comment-meta">
+                      <span class="comment-author">评论者 #{{ comment.authorId }}</span>
+                      <span class="comment-time">{{ formatTime(comment.createdAt) }}</span>
+                    </div>
+                    <div class="comment-header-actions">
+                      <button class="comment-action-btn" @click="handleLikeComment(answer, comment)">
+                        <svg class="action-icon" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M8 4a.5.5 0 01.5.5v3h3a.5.5 0 010 1h-3v3a.5.5 0 01-1 0v-3h-3a.5.5 0 010-1h3v-3A.5.5 0 018 4z"/>
+                        </svg>
+                        {{ comment.likeCount || 0 }}
+                      </button>
+                      <button
+                        v-if="comment.authorId === userStore.userInfo?.id"
+                        class="comment-delete-btn"
+                        @click="handleDeleteComment(answer, comment)"
+                        title="删除评论"
+                      >
+                        删除
+                      </button>
+                    </div>
                   </div>
                   <div class="comment-content">{{ comment.content }}</div>
+                  
+                  <!-- 回复按钮 -->
+                  <button 
+                    v-if="activeReplyCommentId !== comment.commentId"
+                    class="reply-btn"
+                    @click="toggleReplyInput(answer.answerId, comment.commentId)"
+                  >
+                    回复
+                  </button>
+                  
+                  <!-- 回复输入框 -->
+                  <div v-if="activeReplyCommentId === comment.commentId && activeReplyAnswerId === answer.answerId" class="reply-input-section">
+                    <textarea
+                      v-model="replyInputs[`${answer.answerId}_${comment.commentId}`]"
+                      rows="2"
+                      placeholder="写下你的回复..."
+                      class="reply-textarea"
+                    ></textarea>
+                    <div class="reply-input-actions">
+                      <button class="ghost-btn" @click="cancelReply(answer.answerId, comment.commentId)">取消</button>
+                      <button class="primary-btn" @click="handleCreateReply(answer, comment)">发布回复</button>
+                    </div>
+                  </div>
+
+                  <!-- 回复列表 -->
+                  <div v-if="comment.replies && comment.replies.length" class="replies-section">
+                    <div
+                      v-for="reply in comment.replies"
+                      :key="reply.replyId"
+                      class="reply-item"
+                    >
+                      <div class="reply-header">
+                        <div class="reply-meta">
+                          <span class="reply-author">回复者 #{{ reply.authorId }}</span>
+                          <span class="reply-time">{{ formatTime(reply.createdAt) }}</span>
+                        </div>
+                        <div class="reply-header-actions">
+                          <button class="comment-action-btn" @click="handleLikeReply(answer, comment, reply)">
+                            <svg class="action-icon" viewBox="0 0 16 16" fill="currentColor">
+                              <path d="M8 4a.5.5 0 01.5.5v3h3a.5.5 0 010 1h-3v3a.5.5 0 01-1 0v-3h-3a.5.5 0 010-1h3v-3A.5.5 0 018 4z"/>
+                            </svg>
+                            {{ reply.likeCount || 0 }}
+                          </button>
+                          <button
+                            v-if="reply.authorId === userStore.userInfo?.id"
+                            class="comment-delete-btn"
+                            @click="handleDeleteReply(answer, comment, reply)"
+                            title="删除回复"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                      <div class="reply-content">{{ reply.content }}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -142,10 +251,18 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
   getQuestionDetail,
+  deleteQuestion,
   createAnswer,
+  deleteAnswer,
   likeQuestion,
   favoriteQuestion,
-  likeAnswer
+  likeAnswer,
+  createComment,
+  deleteComment,
+  likeComment,
+  createReply,
+  deleteReply,
+  likeReply
 } from '@/api/qa'
 import { formatTime } from '@/utils/time'
 
@@ -169,6 +286,13 @@ const error = ref(null)
 const question = ref(null)
 const answerInput = ref('')
 const answerIdToHighlight = ref(null)
+
+// 评论相关状态
+const activeCommentAnswerId = ref(null)
+const commentInputs = ref({})
+const activeReplyAnswerId = ref(null)
+const activeReplyCommentId = ref(null)
+const replyInputs = ref({})
 
 // 获取问题详情
 const fetchQuestionDetail = async () => {
@@ -322,6 +446,263 @@ const handleLikeAnswer = async (answer) => {
   } catch (err) {
     console.error('点赞回答失败', err)
     window.alert('点赞失败')
+  }
+}
+
+// 切换评论输入框显示
+const toggleCommentInput = (answerId) => {
+  if (activeCommentAnswerId.value === answerId) {
+    activeCommentAnswerId.value = null
+    commentInputs.value[answerId] = ''
+  } else {
+    activeCommentAnswerId.value = answerId
+    if (!commentInputs.value[answerId]) {
+      commentInputs.value[answerId] = ''
+    }
+  }
+}
+
+// 取消评论
+const cancelComment = (answerId) => {
+  activeCommentAnswerId.value = null
+  commentInputs.value[answerId] = ''
+}
+
+// 创建评论
+const handleCreateComment = async (answer) => {
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  const content = commentInputs.value[answer.answerId]?.trim()
+  if (!content) {
+    window.alert('评论内容不能为空')
+    return
+  }
+  
+  try {
+    await createComment({
+      questionId: props.questionId,
+      answerId: answer.answerId,
+      authorId: userId,
+      content
+    })
+    
+    commentInputs.value[answer.answerId] = ''
+    activeCommentAnswerId.value = null
+    // 重新加载问题详情
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('创建评论失败', err)
+    window.alert('创建评论失败')
+  }
+}
+
+// 点赞评论
+const handleLikeComment = async (answer, comment) => {
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  try {
+    await likeComment(userId, props.questionId, answer.answerId, comment.commentId)
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('点赞评论失败', err)
+    window.alert('点赞失败')
+  }
+}
+
+// 切换回复输入框显示
+const toggleReplyInput = (answerId, commentId) => {
+  if (activeReplyAnswerId.value === answerId && activeReplyCommentId.value === commentId) {
+    activeReplyAnswerId.value = null
+    activeReplyCommentId.value = null
+    replyInputs.value[`${answerId}_${commentId}`] = ''
+  } else {
+    activeReplyAnswerId.value = answerId
+    activeReplyCommentId.value = commentId
+    const key = `${answerId}_${commentId}`
+    if (!replyInputs.value[key]) {
+      replyInputs.value[key] = ''
+    }
+  }
+}
+
+// 取消回复
+const cancelReply = (answerId, commentId) => {
+  activeReplyAnswerId.value = null
+  activeReplyCommentId.value = null
+  replyInputs.value[`${answerId}_${commentId}`] = ''
+}
+
+// 创建回复
+const handleCreateReply = async (answer, comment) => {
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  const key = `${answer.answerId}_${comment.commentId}`
+  const content = replyInputs.value[key]?.trim()
+  if (!content) {
+    window.alert('回复内容不能为空')
+    return
+  }
+  
+  try {
+    await createReply({
+      questionId: props.questionId,
+      answerId: answer.answerId,
+      commentId: comment.commentId,
+      authorId: userId,
+      content
+    })
+    
+    replyInputs.value[key] = ''
+    activeReplyAnswerId.value = null
+    activeReplyCommentId.value = null
+    // 重新加载问题详情
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('创建回复失败', err)
+    window.alert('创建回复失败')
+  }
+}
+
+// 点赞回复
+const handleLikeReply = async (answer, comment, reply) => {
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  try {
+    await likeReply(userId, props.questionId, answer.answerId, comment.commentId, reply.replyId)
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('点赞回复失败', err)
+    window.alert('点赞失败')
+  }
+}
+
+// 删除回答
+const handleDeleteAnswer = async (answer) => {
+  const confirmed = window.confirm('确定要删除这个回答吗？删除后无法恢复。')
+  if (!confirmed) return
+  
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  // 检查是否是作者
+  if (answer.authorId !== userId) {
+    window.alert('只能删除自己的回答')
+    return
+  }
+  
+  try {
+    await deleteAnswer(props.questionId, answer.answerId)
+    window.alert('删除成功')
+    // 重新加载问题详情
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('删除回答失败', err)
+    window.alert('删除回答失败，请稍后重试')
+  }
+}
+
+// 删除评论
+const handleDeleteComment = async (answer, comment) => {
+  const confirmed = window.confirm('确定要删除这条评论吗？删除后无法恢复。')
+  if (!confirmed) return
+  
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  // 检查是否是作者
+  if (comment.authorId !== userId) {
+    window.alert('只能删除自己的评论')
+    return
+  }
+  
+  try {
+    await deleteComment(props.questionId, answer.answerId, comment.commentId)
+    window.alert('删除成功')
+    // 重新加载问题详情
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('删除评论失败', err)
+    window.alert('删除评论失败，请稍后重试')
+  }
+}
+
+// 删除回复
+const handleDeleteReply = async (answer, comment, reply) => {
+  const confirmed = window.confirm('确定要删除这条回复吗？删除后无法恢复。')
+  if (!confirmed) return
+  
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  // 检查是否是作者
+  if (reply.authorId !== userId) {
+    window.alert('只能删除自己的回复')
+    return
+  }
+  
+  try {
+    await deleteReply(props.questionId, answer.answerId, comment.commentId, reply.replyId)
+    window.alert('删除成功')
+    // 重新加载问题详情
+    await fetchQuestionDetail()
+  } catch (err) {
+    console.error('删除回复失败', err)
+    window.alert('删除回复失败，请稍后重试')
+  }
+}
+
+// 删除问题
+const handleDeleteQuestion = async () => {
+  if (!question.value) return
+  
+  const confirmed = window.confirm('确定要删除这个问题吗？删除后无法恢复。')
+  if (!confirmed) return
+  
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  // 检查是否是作者
+  if (question.value.authorId !== userId) {
+    window.alert('只能删除自己的问题')
+    return
+  }
+  
+  try {
+    await deleteQuestion(props.questionId)
+    window.alert('删除成功')
+    // 返回问答列表页
+    goBack()
+  } catch (err) {
+    console.error('删除问题失败', err)
+    window.alert('删除问题失败，请稍后重试')
   }
 }
 
@@ -509,6 +890,17 @@ onMounted(() => {
   border-color: var(--brand-primary);
 }
 
+.delete-action-btn {
+  color: #dc3545;
+  border-color: rgba(220, 53, 69, 0.3);
+}
+
+.delete-action-btn:hover {
+  background: rgba(220, 53, 69, 0.1);
+  border-color: #dc3545;
+  color: #c82333;
+}
+
 .action-icon {
   width: 16px;
   height: 16px;
@@ -589,16 +981,81 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.answer-content {
+.answer-content-wrapper {
+  position: relative;
   margin-bottom: 12px;
+}
+
+.answer-content {
   font-size: 15px;
   line-height: 1.6;
   color: var(--text-strong);
   white-space: pre-wrap;
+  padding-right: 140px;
+  min-height: 40px;
 }
 
 .answer-actions {
-  margin-top: 12px;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.text-action-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--brand-primary);
+  transition: all 0.2s;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.text-action-btn:hover {
+  color: var(--brand-primary);
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.text-action-btn:active {
+  opacity: 0.6;
+}
+
+.delete-text-btn {
+  color: #dc3545;
+}
+
+.delete-text-btn:hover {
+  color: #c82333;
+  text-decoration: underline;
+}
+
+.comment-header-actions,
+.reply-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comment-delete-btn {
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #dc3545;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.comment-delete-btn:hover {
+  background: rgba(220, 53, 69, 0.1);
+  color: #c82333;
 }
 
 .comments-section {
@@ -623,6 +1080,160 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.comment-input-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.comment-textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+
+.comment-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ghost-btn {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ghost-btn:hover {
+  background: var(--surface-muted);
+  border-color: var(--text-muted);
+}
+
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.comment-author {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.comment-time {
+  color: var(--text-muted);
+}
+
+.comment-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.comment-action-btn:hover {
+  background: var(--surface-muted);
+  color: var(--text-strong);
+}
+
+.comment-action-btn .action-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.reply-btn {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--brand-primary);
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.reply-btn:hover {
+  text-decoration: underline;
+}
+
+.reply-input-section {
+  margin-top: 12px;
+  padding-left: 16px;
+  border-left: 2px solid var(--line-soft);
+}
+
+.reply-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 8px;
+}
+
+.reply-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.replies-section {
+  margin-top: 12px;
+  padding-left: 16px;
+  border-left: 2px solid var(--line-soft);
+}
+
+.reply-item {
+  margin-bottom: 12px;
+}
+
+.reply-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.reply-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.reply-author {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.reply-time {
+  color: var(--text-muted);
+}
+
+.reply-content {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .empty-answers {
@@ -643,6 +1254,17 @@ onMounted(() => {
 
   .question-title {
     font-size: 20px;
+  }
+
+  .answer-content {
+    padding-right: 0;
+    margin-bottom: 8px;
+  }
+
+  .answer-actions {
+    position: static;
+    margin-top: 8px;
+    justify-content: flex-end;
   }
 }
 </style>

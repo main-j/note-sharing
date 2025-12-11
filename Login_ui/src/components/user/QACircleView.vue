@@ -32,9 +32,8 @@
           v-for="item in displayList"
           :key="item.id"
           class="result-card"
-          @click="handleItemClick(item)"
         >
-          <div class="result-content">
+          <div class="result-content" @click="handleItemClick(item)">
             <h3 class="result-title">{{ item.title }}</h3>
             <p class="result-summary">{{ item.content }}</p>
             <div class="result-meta">
@@ -73,6 +72,18 @@
               </div>
             </div>
           </div>
+          <!-- 删除按钮（仅对问题类型且是作者时显示） -->
+          <button
+            v-if="item.type === 'question' && item.authorId === userStore.userInfo?.id"
+            class="delete-btn"
+            @click.stop="handleDeleteQuestion(item)"
+            title="删除问题"
+          >
+            <svg class="delete-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+              <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1v1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+            </svg>
+          </button>
         </article>
       </div>
 
@@ -370,6 +381,42 @@ const handleCreateQuestion = async () => {
   }
 }
 
+// 删除问题
+const handleDeleteQuestion = async (item) => {
+  if (!item || !item.questionId) return
+  
+  const confirmed = window.confirm('确定要删除这个问题吗？删除后无法恢复。')
+  if (!confirmed) return
+  
+  const userId = userStore.userInfo?.id
+  if (!userId) {
+    window.alert('请先登录后再进行此操作')
+    return
+  }
+  
+  // 检查是否是作者
+  if (item.authorId !== userId) {
+    window.alert('只能删除自己的问题')
+    return
+  }
+  
+  loading.value = true
+  try {
+    await deleteQuestion(item.questionId)
+    
+    // 从列表中移除
+    questionList.value = questionList.value.filter(q => q.questionId !== item.questionId)
+    saveQuestionsToStorage()
+    
+    window.alert('删除成功')
+  } catch (err) {
+    console.error('删除问题失败', err)
+    window.alert('删除问题失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
+}
+
 // 监听路由中的questionId，如果有则加载问题详情
 watch(() => route.query.questionId, async (questionId) => {
   if (questionId && !questionList.value.find(q => q.questionId === questionId)) {
@@ -504,6 +551,7 @@ defineExpose({ openAskDialog })
   background: var(--surface-base);
   transition: border-color 0.2s, box-shadow 0.2s;
   cursor: pointer;
+  position: relative;
 }
 
 .result-card:hover {
@@ -582,6 +630,33 @@ defineExpose({ openAskDialog })
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 12px;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.delete-btn:hover {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+}
+
+.delete-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .state-card {
