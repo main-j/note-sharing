@@ -304,6 +304,8 @@ onMounted(() => {
   min-height: 100vh;
   padding: 20px 24px 100px;
   background: var(--surface-muted);
+  display: flex;
+  flex-direction: column;
 }
 
 .hot-panel {
@@ -314,7 +316,10 @@ onMounted(() => {
   border-radius: 8px;
   padding: 32px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  min-height: 400px;
+  min-height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .panel-header {
@@ -370,6 +375,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
 .result-card {
@@ -478,6 +485,9 @@ onMounted(() => {
   flex-direction: column;
   gap: 10px;
   align-items: center;
+  flex: 1;
+  justify-content: center;
+  min-height: 400px;
 }
 
 .state-card.error {
