@@ -190,6 +190,9 @@ const viewingNoteId = ref(null) // 当前查看的笔记详情ID（用于note-de
 const noteDetailStats = ref(null) // 笔记详情页的统计信息（从搜索结果传递过来）
 const noteDetailTitle = ref(null) // 笔记详情页的标题（从搜索结果传递过来）
 
+// workspace tab 相关状态（需要在 restoreWorkspaceFromRoute 之前定义）
+const selectedWorkspaceId = ref(null) // 当前选中的笔记空间ID（在workspace tab时）
+
 // 从 URL 查询参数中读取 tab，如果没有则使用默认值
 const getTabFromRoute = () => {
   const tabFromQuery = route.query.tab
@@ -308,6 +311,20 @@ const restoreNoteDetailFromRoute = () => {
   }
 }
 
+// 从 URL 恢复 workspace tab 的选中空间（需要在 watch 之前定义，因为 watch 使用了 immediate: true）
+const restoreWorkspaceFromRoute = () => {
+  // 只有在 workspace tab 时才恢复空间ID
+  if (currentTab.value === 'workspace') {
+    const workspaceIdFromQuery = route.query.workspaceId
+    if (workspaceIdFromQuery) {
+      const workspaceId = Number(workspaceIdFromQuery)
+      if (!isNaN(workspaceId)) {
+        selectedWorkspaceId.value = workspaceId
+      }
+    }
+  }
+}
+
 // 监听路由变化，从 URL 中恢复 tab 状态（处理浏览器前进/后退）
 watch(() => route.query.tab, (newTab, oldTab) => {
   console.log('[MainView] 路由 tab 变化:', oldTab, '->', newTab, '当前 currentTab:', currentTab.value, '完整 query:', JSON.stringify(route.query))
@@ -356,7 +373,6 @@ const editingSpaceId = ref(null);
 const editingNotebookName = ref(null);
 const editingNotebookList = ref([]); // 使用数组类型
 const editingNoteId = ref(null); // 当前选中的笔记ID
-const selectedWorkspaceId = ref(null); // 当前选中的笔记空间ID（在workspace tab时）
 const qaRef = ref(null); // 问答组件实例
 const searchViewRef = ref(null); // 搜索视图组件实例
 const recommendViewRef = ref(null); // 推荐视图组件实例
@@ -522,20 +538,6 @@ const handleCloseEditor = () => {
   
   // 确保当前 tab 切换回 workspace 视图，以便用户返回时看到列表
   currentTab.value = 'workspace';
-}
-
-// 从 URL 恢复 workspace tab 的选中空间
-const restoreWorkspaceFromRoute = () => {
-  // 只有在 workspace tab 时才恢复空间ID
-  if (currentTab.value === 'workspace') {
-    const workspaceIdFromQuery = route.query.workspaceId
-    if (workspaceIdFromQuery) {
-      const workspaceId = Number(workspaceIdFromQuery)
-      if (!isNaN(workspaceId)) {
-        selectedWorkspaceId.value = workspaceId
-      }
-    }
-  }
 }
 
 // 处理 WorkspaceView 发出的"空间选中"事件
