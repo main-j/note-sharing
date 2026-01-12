@@ -133,6 +133,7 @@
               v-for="item in currentList" 
               :key="item.userId" 
               class="user-item"
+              @click="handleUserClick(item.userId)"
             >
               <div class="user-avatar">
                 <img 
@@ -153,7 +154,7 @@
                 </div>
                 <div class="follow-time">{{ formatTime(item.followTime) }}</div>
               </div>
-              <div class="user-actions">
+              <div class="user-actions" @click.stop>
                 <button 
                   v-if="activeTab === 'followers' && item.userId !== currentUserId"
                   class="follow-btn"
@@ -184,7 +185,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/stores/user'
 import { getFollowings, getFollowers, followUser, unfollowUser, isFollowing, isMutualFollow, getUserByUsername } from '@/api/follow'
@@ -194,6 +195,7 @@ import { useMessage } from '@/utils/message'
 import service from '@/api/request'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const { userInfo } = storeToRefs(userStore)
 
@@ -409,14 +411,35 @@ const toggleFollow = async (targetUserId) => {
       await unfollowUser(currentUserId.value, targetUserId)
       followStatusMap.value[targetUserId] = false
       mutualFollowMap.value[targetUserId] = false // 取消关注后肯定不是互相关注
+      
+      // 如果在"关注"标签页，从关注列表中移除该用户
+      if (activeTab.value === 'followings') {
+        const index = followingsList.value.findIndex(item => item.userId === targetUserId)
+        if (index !== -1) {
+          followingsList.value.splice(index, 1)
+        }
+      }
+      
       showSuccess('取消关注成功')
+      
       // 如果是在发现页面，重新加载关注状态
       if (activeTab.value === 'discover' && searchedUser.value && searchedUser.value.userId === targetUserId) {
         await checkFollowStatus([searchedUser.value])
       }
+      
+      // 如果在"粉丝"标签页，重新检查互相关注状态（因为取消关注后，互相关注状态会改变）
+      if (activeTab.value === 'followers') {
+        // 检查该用户是否还在关注列表中，如果在，更新互相关注状态
+        const userInList = followersList.value.find(item => item.userId === targetUserId)
+        if (userInList) {
+          // 取消关注后，肯定不是互相关注了
+          mutualFollowMap.value[targetUserId] = false
+        }
+      }
     } else {
       await followUser(currentUserId.value, targetUserId)
       followStatusMap.value[targetUserId] = true
+      
       // 检查是否互相关注
       try {
         const mutual = await isMutualFollow(currentUserId.value, targetUserId)
@@ -425,11 +448,31 @@ const toggleFollow = async (targetUserId) => {
         console.error('检查互相关注状态失败:', err)
         mutualFollowMap.value[targetUserId] = false
       }
+      
       showSuccess('关注成功')
+      
       // 如果是在发现页面，重新加载关注状态
       if (activeTab.value === 'discover' && searchedUser.value && searchedUser.value.userId === targetUserId) {
         await checkFollowStatus([searchedUser.value])
       }
+      
+      // 如果在"粉丝"标签页，重新检查互相关注状态
+      if (activeTab.value === 'followers') {
+        // 检查该用户是否还在关注列表中，如果在，更新互相关注状态
+        const userInList = followersList.value.find(item => item.userId === targetUserId)
+        if (userInList) {
+          try {
+            const mutual = await isMutualFollow(currentUserId.value, targetUserId)
+            mutualFollowMap.value[targetUserId] = mutual
+          } catch (err) {
+            console.error('检查互相关注状态失败:', err)
+            mutualFollowMap.value[targetUserId] = false
+          }
+        }
+      }
+      
+      // 如果在"关注"标签页，需要重新加载数据以更新列表（如果新关注的用户也在关注列表中）
+      // 但通常新关注的用户不会立即出现在关注列表中，所以这里不需要特殊处理
     }
   } catch (err) {
     const errorMsg = err.message || err.response?.data?.message || '操作失败，请稍后重试'
@@ -509,6 +552,21 @@ watch(activeTab, (newTab) => {
     searchError.value = ''
   }
 })
+
+// 处理用户点击事件
+const handleUserClick = (targetUserId) => {
+  if (!targetUserId) return
+  
+  // 跳转到显示该用户公开笔记的页面
+  router.push({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: 'user-notes',
+      userId: targetUserId
+    }
+  })
+}
 
 // 生命周期
 onMounted(() => {
@@ -680,6 +738,7 @@ onMounted(() => {
   border-radius: 16px;
   border: 1px solid var(--line-soft, #e8ecec);
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .user-item:hover {

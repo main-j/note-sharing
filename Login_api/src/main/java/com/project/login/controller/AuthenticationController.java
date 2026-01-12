@@ -164,7 +164,35 @@ public class AuthenticationController {
         }
     }
 
-    // --- 9) 更新用户名 ---
+    // --- 9) 根据用户ID获取用户信息 ---
+    @Operation(summary = "Get user info by user ID")
+    @GetMapping("/user/by-id")
+    public ResponseEntity<?> getUserById(
+            @RequestParam Long userId
+    ) {
+        try {
+            UserEntity user = userService.getUserById(userId);
+            
+            Map<String, Object> result = Map.of(
+                    "id", user.getId(),
+                    "username", user.getUsername(),
+                    "email", user.getEmail(),
+                    "studentNumber", user.getStudentNumber() == null ? "" : user.getStudentNumber(),
+                    "avatarUrl", user.getAvatarUrl() == null ? "" : user.getAvatarUrl()
+            );
+
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            log.error("获取用户信息失败", e);
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return ResponseEntity.status(404).body(Map.of("error", "用户不存在"));
+            }
+            return ResponseEntity.status(500).body(Map.of("error", "获取用户信息失败"));
+        }
+    }
+
+    // --- 10) 更新用户名 ---
     @Operation(summary = "Update username")
     @PutMapping("/username")
     public ResponseEntity<?> updateUsername(

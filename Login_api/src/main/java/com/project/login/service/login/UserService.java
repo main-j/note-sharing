@@ -95,6 +95,12 @@ public class UserService {
         return userMapper.selectByUsername(username);
     }
 
+    // ----------------- 根据用户ID获取用户信息 -----------------
+    public UserEntity getUserById(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+    }
+
     // ----------------- 更新用户名 -----------------
     public void updateUsername(Long userId, String newUsername) {
         // 1. 验证用户存在

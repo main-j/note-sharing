@@ -271,3 +271,16 @@ export const getRecommendedNotes = (userId, topN = 10) => {
         params: { userId, topN }
     }).then(res => res.data.data);
 };
+
+/**
+ * [对应后端: POST /search/notes]
+ * 通过作者名称搜索笔记（获取用户的公开笔记）
+ * @param {string} authorName - 作者名称
+ * @param {number} userId - 当前用户ID（用于记录搜索行为）
+ * @returns {Promise<Array>} 返回笔记列表
+ */
+export const searchNotesByAuthor = (authorName, userId) => {
+    // 使用搜索 API，通过作者名称搜索
+    // 注意：这里使用 authorName 作为关键词，搜索结果会包含该作者的笔记
+    return searchNotes(authorName, userId);
+};

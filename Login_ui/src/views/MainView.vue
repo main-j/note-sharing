@@ -143,6 +143,12 @@
       <section v-else-if="currentTab === 'follow-list' && route.query.userId">
         <FollowListView :userId="Number(route.query.userId)" />
       </section>
+      <section v-else-if="currentTab === 'user-notes' && route.query.userId">
+        <UserNotesView 
+          :userId="Number(route.query.userId)"
+          @open-note-detail="handleOpenNoteDetail"
+        />
+      </section>
       <section v-else>
         <ProfileView />
       </section>
@@ -164,6 +170,7 @@ import RecommendView from '../components/user/RecommendView.vue'
 import QACircleView from '../components/user/QACircleView.vue'
 import QADetailView from '../components/user/QADetailView.vue'
 import FollowListView from '../components/user/FollowListView.vue'
+import UserNotesView from '../components/user/UserNotesView.vue'
 import { useRouter, useRoute } from 'vue-router'
 import service from '../api/request'
 import { useUserStore } from '@/stores/user'
@@ -207,7 +214,7 @@ const selectedWorkspaceId = ref(null) // 当前选中的笔记空间ID（在work
 const getTabFromRoute = () => {
   const tabFromQuery = route.query.tab
   // 验证 tab 值是否有效（包括search tab和note-detail tab）
-  const validTabs = [...tabs.map(t => t.value), 'search', 'profile', 'note-detail', 'follow-list']
+  const validTabs = [...tabs.map(t => t.value), 'search', 'profile', 'note-detail', 'follow-list', 'user-notes']
   if (tabFromQuery && validTabs.includes(tabFromQuery)) {
     return tabFromQuery
   }
@@ -257,6 +264,11 @@ watch(currentTab, (newTab, oldTab) => {
     delete newQuery.noteId
     delete newQuery.title
     delete newQuery.fileType
+  }
+  
+  // 当切换到 user-notes 或 follow-list 时，确保保留 userId 参数
+  if ((newTab === 'user-notes' || newTab === 'follow-list') && route.query.userId) {
+    newQuery.userId = route.query.userId
   }
   
   console.log('[MainView] 更新 URL，newQuery:', newQuery)
@@ -339,7 +351,7 @@ const restoreWorkspaceFromRoute = () => {
 watch(() => route.query.tab, (newTab, oldTab) => {
   console.log('[MainView] 路由 tab 变化:', oldTab, '->', newTab, '当前 currentTab:', currentTab.value, '完整 query:', JSON.stringify(route.query))
   if (newTab) {
-    const validTabs = [...tabs.map(t => t.value), 'search', 'profile', 'note-detail', 'qa-detail', 'follow-list']
+    const validTabs = [...tabs.map(t => t.value), 'search', 'profile', 'note-detail', 'qa-detail', 'follow-list', 'user-notes']
     if (validTabs.includes(newTab)) {
       // 强制更新 currentTab，确保与 URL 同步
       if (currentTab.value !== newTab) {
