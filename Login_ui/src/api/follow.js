@@ -142,3 +142,19 @@ export const getUserByUsername = (username) => {
         params: { username: username.trim() }
     }).then(res => res.data);
 };
+
+/**
+ * [对应后端: GET /api/v1/auth/user/by-id]
+ * 根据用户ID获取用户信息
+ * @param {number} userId - 用户ID
+ * @returns {Promise<{id: number, username: string, email: string, studentNumber: string, avatarUrl: string}>}
+ */
+export const getUserById = (userId) => {
+    const id = Number(userId);
+    if (isNaN(id) || id <= 0) {
+        return Promise.reject(new Error('无效的用户ID'));
+    }
+    return service.get('/auth/user/by-id', {
+        params: { userId: id }
+    }).then(res => res.data);
+};

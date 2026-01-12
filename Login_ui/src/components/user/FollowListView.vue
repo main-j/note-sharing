@@ -138,13 +138,13 @@
               <div class="user-avatar">
                 <img 
                   :src="getUserAvatar(item.userId)" 
-                  :alt="`用户 ${item.userId}`"
+                  :alt="userInfoMap[item.userId]?.username || `用户 ${item.userId}`"
                   @error="handleAvatarError"
                 />
               </div>
               <div class="user-info">
                 <div class="user-name-row">
-                  <span class="user-name">用户 {{ item.userId }}</span>
+                  <span class="user-name">{{ userInfoMap[item.userId]?.username || `用户 ${item.userId}` }}</span>
                   <span 
                     v-if="currentUserId && item.userId !== currentUserId && isMutualFollowing(item.userId)" 
                     class="mutual-badge"
@@ -188,7 +188,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/stores/user'
-import { getFollowings, getFollowers, followUser, unfollowUser, isFollowing, isMutualFollow, getUserByUsername } from '@/api/follow'
+import { getFollowings, getFollowers, followUser, unfollowUser, isFollowing, isMutualFollow, getUserByUsername, getUserById } from '@/api/follow'
 import { formatTime } from '@/utils/time'
 import MessageToast from '@/components/MessageToast.vue'
 import { useMessage } from '@/utils/message'
@@ -223,6 +223,7 @@ const searchUsername = ref('') // 搜索的用户名
 const searchedUser = ref(null) // 搜索到的用户
 const searchingUser = ref(false) // 是否正在搜索用户
 const searchError = ref('') // 搜索错误信息
+const userInfoMap = ref({}) // 存储每个用户的详细信息 {userId: {username, avatarUrl, ...}}
 
 // 计算属性
 const currentUserId = computed(() => userInfo.value?.id)
@@ -252,7 +253,11 @@ const switchTab = (tab) => {
 }
 
 const getUserAvatar = (userId) => {
-  // 暂时使用默认头像，后续可以根据 userId 获取用户信息
+  // 如果用户信息中有头像URL，使用它；否则使用默认头像
+  const userInfo = userInfoMap.value[userId]
+  if (userInfo && userInfo.avatarUrl) {
+    return userInfo.avatarUrl
+  }
   return '/assets/avatars/avatar.png'
 }
 
@@ -297,6 +302,9 @@ const loadData = async () => {
       const data = await getFollowings(userId)
       followingsList.value = data?.followings || []
       
+      // 获取每个用户的详细信息（包括用户名）
+      await loadUserInfos(followingsList.value)
+      
       // 如果是查看自己的关注列表，检查每个用户的互相关注状态
       const currentId = Number(currentUserId.value)
       if (currentId && userId === currentId) {
@@ -309,6 +317,9 @@ const loadData = async () => {
     } else {
       const data = await getFollowers(userId)
       followersList.value = data?.followers || []
+      
+      // 获取每个用户的详细信息（包括用户名）
+      await loadUserInfos(followersList.value)
       
       // 检查每个粉丝的关注状态（当前用户是否关注了他们）
       if (currentUserId.value) {
@@ -358,6 +369,41 @@ const loadData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 批量加载用户信息
+const loadUserInfos = async (userList) => {
+  if (!userList || userList.length === 0) return
+  
+  // 并行获取所有用户的详细信息
+  const promises = userList.map(async (item) => {
+    const userId = Number(item.userId)
+    if (!userId || userId <= 0) return
+    
+    // 如果已经加载过，跳过
+    if (userInfoMap.value[userId]) return
+    
+    try {
+      const userInfo = await getUserById(userId)
+      userInfoMap.value[userId] = {
+        username: userInfo.username || `用户 ${userId}`,
+        avatarUrl: userInfo.avatarUrl,
+        studentNumber: userInfo.studentNumber,
+        email: userInfo.email
+      }
+    } catch (err) {
+      console.error(`获取用户 ${userId} 信息失败:`, err)
+      // 如果获取失败，使用默认值
+      userInfoMap.value[userId] = {
+        username: `用户 ${userId}`,
+        avatarUrl: null,
+        studentNumber: null,
+        email: null
+      }
+    }
+  })
+  
+  await Promise.all(promises)
 }
 
 // 检查关注状态和互相关注状态

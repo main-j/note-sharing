@@ -34,6 +34,12 @@
               <path d="M8 8a3 3 0 100-6 3 3 0 000 6zm2-3a2 2 0 11-4 0 2 2 0 014 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
             </svg>
             <span class="author-name">{{ stats.authorName || '未知作者' }}</span>
+            <FollowButton
+              v-if="authorUserId"
+              :target-user-id="authorUserId"
+              size="small"
+              class="author-follow-button"
+            />
             <span v-if="noteDetail.createdAt" class="create-time">
               <svg class="time-icon" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M8 3.5a.5.5 0 00-1 0V9a.5.5 0 00.252.434l3.5 2a.5.5 0 00.496-.868L8 8.71V3.5z"/>
@@ -432,11 +438,13 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getFileUrlByNoteId, getNoteStats, changeNoteStat } from '@/api/note'
 import { getRemarksByNote, insertRemark, deleteRemark, likeRemark, cancelLikeRemark } from '@/api/remark'
+import { getUserByUsername } from '@/api/follow'
 import { useUserStore } from '@/stores/user'
 import { formatTime } from '@/utils/time'
 import VuePdfEmbed from 'vue-pdf-embed'
 import MarkdownIt from 'markdown-it'
 import MessageToast from '@/components/MessageToast.vue'
+import FollowButton from '@/components/FollowButton.vue'
 import { useMessage } from '@/utils/message'
 
 const router = useRouter()
@@ -504,6 +512,10 @@ const replyToRemarkId = ref(null) // 回复的目标评论ID
 const replyToUsername = ref(null) // 回复的目标用户名
 const commentActionLoading = ref({})
 
+// 作者相关状态
+const authorUserId = ref(null) // 作者的userId
+const authorUserIdLoading = ref(false) // 是否正在获取作者ID
+
 // 配置markdown-it解析器
 const mdParser = new MarkdownIt({
   breaks: true,
@@ -564,6 +576,37 @@ const updateStatsFromResponse = (statsData) => {
     favorites: statsData.favorites ?? stats.value.favorites ?? 0,
     comments: statsData.comments ?? stats.value.comments ?? 0
   }
+  
+  // 当获取到作者名称后，尝试获取作者的userId
+  if (stats.value.authorName && stats.value.authorName !== '未知作者') {
+    fetchAuthorUserId(stats.value.authorName)
+  }
+}
+
+// 根据作者名称获取作者userId
+const fetchAuthorUserId = async (authorName) => {
+  if (!authorName || authorName === '未知作者') {
+    authorUserId.value = null
+    return
+  }
+  
+  // 如果已经获取过，不再重复获取
+  if (authorUserId.value) return
+  
+  authorUserIdLoading.value = true
+  try {
+    const userInfo = await getUserByUsername(authorName)
+    if (userInfo && userInfo.id) {
+      authorUserId.value = userInfo.id
+    } else {
+      authorUserId.value = null
+    }
+  } catch (err) {
+    console.error('获取作者信息失败:', err)
+    authorUserId.value = null
+  } finally {
+    authorUserIdLoading.value = false
+  }
 }
 
 const handleToggleStat = async (field) => {
@@ -606,6 +649,7 @@ const fetchNoteDetail = async () => {
   error.value = null
   isLiked.value = false
   isFavorited.value = false
+  authorUserId.value = null // 重置作者ID，准备获取新笔记的作者信息
 
   try {
     // 确保noteId是有效的数字
@@ -789,13 +833,7 @@ watch(() => props.noteId, () => {
 // 监听initialStats变化，如果统计信息更新了，也要更新显示
 watch(() => props.initialStats, (newStats) => {
   if (newStats) {
-    stats.value = {
-      authorName: newStats.authorName || '未知作者',
-      views: newStats.views || 0,
-      likes: newStats.likes || 0,
-      favorites: newStats.favorites || 0,
-      comments: newStats.comments || 0
-    }
+    updateStatsFromResponse(newStats)
   }
 }, { immediate: true, deep: true })
 
@@ -1213,6 +1251,10 @@ onMounted(() => {
   font-size: 15px;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.author-follow-button {
+  margin-left: 12px;
 }
 
 .create-time {
