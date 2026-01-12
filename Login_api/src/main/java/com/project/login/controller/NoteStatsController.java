@@ -7,6 +7,7 @@ import com.project.login.model.dto.userbehavior.UserBehaviorDTO;
 import com.project.login.model.response.StandardResponse;
 import com.project.login.model.vo.NoteStatsVO;
 import com.project.login.service.notestats.NoteStatsService;
+import com.project.login.service.notification.NotificationService;
 import com.project.login.service.flink.userbahavior.UserBehaviorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +24,7 @@ public class NoteStatsController {
     private final NoteStatsService noteStatsService;
     private final UserBehaviorService userBehaviorService;
     private final UserFavoriteNoteMapper userFavoriteNoteMapper;
+    private final NotificationService notificationService;
 
     @Operation(summary = "Increment/Decrement a note statistic field")
     @PostMapping("/change")
@@ -71,6 +73,13 @@ public class NoteStatsController {
 
         // 记录用户行为
         userBehaviorService.recordBehavior(dto);
+
+        // 创建相应通知（仅在增加时发送，避免取消点赞/收藏也发通知）
+        if ("likes".equalsIgnoreCase(field) && delta > 0) {
+            notificationService.createNoteLikeNotification(userId, noteId);
+        } else if ("favorites".equalsIgnoreCase(field) && delta > 0) {
+            notificationService.createNoteFavoriteNotification(userId, noteId);
+        }
 
         return StandardResponse.success(vo);
     }

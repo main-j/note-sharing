@@ -16,6 +16,7 @@ import com.project.login.repository.RemarkLikeCountRepository;
 import com.project.login.repository.RemarkLikeByUsersRepository;
 import com.project.login.repository.RemarkRepository;
 import com.project.login.service.notestats.NoteStatsService;
+import com.project.login.service.notification.NotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +51,7 @@ public class RemarkService {
     private final RabbitTemplate rabbitTemplate;
     private final String LikeCountQueue="remarkLikeCount.redis.queue";
     private final String LikeUsersQueue="remarkLikeUsers.redis.queue";
+    private final NotificationService notificationService;
 
     private RemarkVO transferDO2VO(RemarkDO remarkDO, UserDO user) {
         //初始转化与变量准备
@@ -356,6 +358,17 @@ public class RemarkService {
                 }
             }).start();
             noteStatsService.changeField(remarkDO.getNoteId(),"comments",1);
+
+            // --- 创建通知 ---
+            Long actorId = remarkInsertDTO.getUserId();
+            Long noteId = remarkInsertDTO.getNoteId();
+            if (Boolean.FALSE.equals(remarkDO.getIsReply())) {
+                // 一级评论：评论我的笔记
+                notificationService.createNoteCommentNotification(actorId, noteId);
+            } else {
+                // 回复评论：评论我的评论
+                notificationService.createNoteReplyCommentNotification(remarkDO.getReplyToRemarkId(), actorId);
+            }
             return true;
         } catch (Exception e) {
             throw new RuntimeException("Failed to insert remark", e);

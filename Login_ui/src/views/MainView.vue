@@ -48,13 +48,15 @@
           <span class="action-text">私信</span>
         </div>
 
-        <div class="action-icon-wrapper notification-wrapper">
+        <div class="action-icon-wrapper notification-wrapper" @click="toggleNotificationPanel">
           <img
               src="/assets/icons/icon-notification.svg"
               alt="消息"
               class="action-image-icon notification-icon-img"
           />
-          <span class="badge">!</span>
+          <span v-if="notificationUnreadTotal > 0" class="badge">
+            {{ notificationUnreadTotal > 99 ? '99+' : notificationUnreadTotal }}
+          </span>
           <span class="action-text">消息</span>
         </div>
 
@@ -127,6 +129,8 @@
         <QADetailView 
           :questionId="route.query.questionId"
           :answerId="route.query.answerId"
+          :commentId="route.query.commentId"
+          :replyId="route.query.replyId"
         />
       </section>
       <section v-else-if="currentTab === 'workspace'">
@@ -155,6 +159,53 @@
         <ProfileView />
       </section>
     </main>
+
+    <!-- 系统通知面板 -->
+    <div v-if="showNotificationPanel" class="notification-panel">
+      <div class="notification-panel-header">
+        <span class="notification-title">消息中心</span>
+        <button
+          type="button"
+          class="notification-mark-all"
+          @click.stop="handleMarkAllNotificationsRead"
+        >
+          全部标记为已读
+        </button>
+      </div>
+      <div class="notification-list" v-if="notifications.length">
+        <button
+          v-for="item in notifications"
+          :key="item.id"
+          type="button"
+          class="notification-item"
+          :class="{ 'is-unread': item.read === false }"
+          @click.stop="handleNotificationClick(item)"
+        >
+          <div class="notification-avatar">
+            <img
+              :src="getNotificationAvatarUrl(item.actorId)"
+              alt="用户头像"
+              @error="handleNotificationAvatarError"
+            />
+          </div>
+          <div class="notification-main">
+            <div class="notification-message">
+              {{ item.message }}
+            </div>
+            <div class="notification-meta">
+              <span class="notification-time">
+                {{ new Date(item.createdAt).toLocaleString() }}
+              </span>
+              <span v-if="item.read === false" class="notification-dot"></span>
+            </div>
+          </div>
+        </button>
+      </div>
+      <div v-else class="notification-empty">
+        暂无新的消息
+      </div>
+    </div>
+
     <PrivateMessagePanel
       v-model:visible="showPrivateMessagePanel"
       @unread-updated="handleUnreadUpdated"
@@ -183,6 +234,13 @@ import service from '../api/request'
 import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
 import { fetchUnreadTotal as fetchConversationUnreadTotal } from '@/api/conversation'
+import {
+  fetchNotifications,
+  fetchNotificationUnreadTotal,
+  markNotificationAsRead,
+  markAllNotificationsAsRead
+} from '@/api/notification'
+import { getUserById } from '@/api/follow'
 
 const router = useRouter()
 const route = useRoute()
@@ -202,6 +260,12 @@ const currentUserId = computed(() => userInfo.value?.id)
 const showPrivateMessagePanel = ref(false)
 const privateMessageUnreadTotal = ref(0)
 let privateMessageTimer = null
+
+// 通知面板 & 未读数
+const showNotificationPanel = ref(false)
+const notificationUnreadTotal = ref(0)
+const notifications = ref([])
+const notificationUserInfoMap = ref({}) // {actorId: { username, avatarUrl }}
 
 const refreshPrivateMessageUnread = async () => {
   if (!currentUserId.value) {
@@ -225,6 +289,125 @@ const togglePrivateMessagePanel = async () => {
 
 const handleUnreadUpdated = (total) => {
   privateMessageUnreadTotal.value = total || 0
+}
+
+const getNotificationAvatarUrl = (actorId) => {
+  if (!actorId) return '/assets/avatars/avatar.png'
+  const info = notificationUserInfoMap.value[actorId]
+  if (info && info.avatarUrl) return info.avatarUrl
+  return '/assets/avatars/avatar.png'
+}
+
+const handleNotificationAvatarError = (event) => {
+  event.target.src = '/assets/avatars/avatar.png'
+}
+
+const loadNotificationUserInfo = async (actorId) => {
+  if (!actorId) return
+  if (notificationUserInfoMap.value[actorId]) return
+  try {
+    const res = await getUserById(actorId)
+    const data = res.data || res
+    if (data) {
+      notificationUserInfoMap.value[actorId] = {
+        username: data.username,
+        avatarUrl: data.avatarUrl
+      }
+    }
+  } catch (e) {
+    console.error('加载通知用户信息失败', e)
+  }
+}
+
+const refreshNotificationUnread = async () => {
+  if (!currentUserId.value) {
+    notificationUnreadTotal.value = 0
+    return
+  }
+  try {
+    const total = await fetchNotificationUnreadTotal(currentUserId.value)
+    notificationUnreadTotal.value = total || 0
+  } catch (e) {
+    console.error('加载通知未读数失败', e)
+  }
+}
+
+const loadNotifications = async () => {
+  if (!currentUserId.value) {
+    notifications.value = []
+    return
+  }
+  try {
+    const list = await fetchNotifications(currentUserId.value)
+    const arr = Array.isArray(list) ? list : []
+    notifications.value = arr
+
+    // 加载所有通知发送者的头像信息
+    const actorIds = Array.from(new Set(arr.map(n => n.actorId).filter(Boolean)))
+    await Promise.all(actorIds.map(id => loadNotificationUserInfo(id)))
+  } catch (e) {
+    console.error('加载通知列表失败', e)
+  }
+}
+
+const toggleNotificationPanel = async () => {
+  showNotificationPanel.value = !showNotificationPanel.value
+  if (showNotificationPanel.value) {
+    await Promise.all([loadNotifications(), refreshNotificationUnread()])
+  }
+}
+
+const handleNotificationClick = async (item) => {
+  if (!item) return
+
+  // 根据 targetType 跳转到对应详情页
+  if (item.targetType === 'NOTE' && item.targetId) {
+    const noteId = Number(item.targetId)
+    if (!Number.isNaN(noteId)) {
+      handleOpenNoteDetail({ noteId, fromTab: currentTab.value || 'hot' })
+    }
+  } else if (item.targetType === 'QUESTION' && item.targetId) {
+    // 问答：跳转到问题详情页，并携带回答 / 评论 / 回复 ID，便于自动滚动
+    router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        tab: 'qa-detail',
+        questionId: item.targetId,
+        answerId: item.answerId ?? undefined,
+        commentId: item.commentId ?? undefined,
+        replyId: item.replyId ?? undefined
+      }
+    })
+    currentTab.value = 'qa-detail'
+  }
+
+  showNotificationPanel.value = false
+
+  // 标记为已读并刷新未读数
+  try {
+    if (!item.read && item.id) {
+      await markNotificationAsRead(item.id)
+      await refreshNotificationUnread()
+    }
+  } catch (e) {
+    console.error('标记通知已读失败', e)
+  }
+}
+
+const handleMarkAllNotificationsRead = async () => {
+  if (!currentUserId.value) return
+  try {
+    await markAllNotificationsAsRead(currentUserId.value)
+    notificationUnreadTotal.value = 0
+    // 本地列表全部置为已读
+    notifications.value = notifications.value.map(n => ({
+      ...n,
+      read: true
+    }))
+  } catch (e) {
+    console.error('全部标记通知已读失败', e)
+  }
 }
 
 const tabs = [
@@ -1078,6 +1261,124 @@ onBeforeUnmount(() => {
 .main-content {
   flex: 1;
   padding: 20px;
+}
+
+.notification-panel {
+  position: absolute;
+  top: 64px;
+  right: 32px;
+  width: 360px;
+  max-height: 480px;
+  background: var(--surface-base);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 1500;
+}
+
+.notification-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-base);
+}
+
+.notification-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.notification-mark-all {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.notification-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 4px 8px;
+}
+
+.notification-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  display: flex;
+  align-items: flex-start;
+}
+
+.notification-item:hover {
+  background: var(--surface-soft);
+}
+
+.notification-item.is-unread {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.notification-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-right: 10px;
+  background: var(--surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.notification-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notification-message {
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.notification-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.notification-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--brand-primary);
+}
+
+.notification-empty {
+  padding: 24px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 @media (max-width: 960px) {

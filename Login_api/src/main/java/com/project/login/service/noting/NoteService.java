@@ -9,6 +9,7 @@ import com.project.login.model.event.NoteActionType;
 import com.project.login.model.vo.NoteShowVO;
 import com.project.login.model.vo.NoteVO;
 import com.project.login.service.minio.MinioService;
+import com.project.login.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -32,6 +33,7 @@ public class NoteService {
     private final MinioService minioservice;
     private final NoteEventPublisher eventPublisher;
     private final ContentSummaryService contentSummaryService;
+    private final NotificationService notificationService;
 
     @Qualifier("noteConvert")
     private final NoteConvert convert;
@@ -290,6 +292,9 @@ public class NoteService {
         event.setContentSummary(contentSummary);
 
         eventPublisher.sendEsNoteEvent(event);
+
+        // 向关注该用户的粉丝发送“我关注的人发布了笔记”通知
+        notificationService.createNotePublishNotifications(existing.getId());
 
         return convert.toVO(existing);
     }

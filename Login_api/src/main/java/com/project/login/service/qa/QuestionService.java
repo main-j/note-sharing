@@ -11,6 +11,7 @@ import com.project.login.model.vo.qa.QuestionVO;
 import com.project.login.model.vo.qa.ReplyVO;
 import com.project.login.repository.QuestionRepository;
 
+import com.project.login.service.notification.NotificationService;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class QuestionService {
     private final QuestionConvert convert;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
     @Resource
     private StringRedisTemplate redis;
 
@@ -73,7 +75,10 @@ public class QuestionService {
         );
         rabbitTemplate.convertAndSend("question.es.queue", event);
 
-        // 3. 返回 VO
+        // 3. 给粉丝发送“我关注的人发布了问题”的通知
+        notificationService.createQuestionPublishNotifications(q.getQuestionId());
+
+        // 4. 返回 VO
         return convert.toQuestionVO(q);
     }
 
@@ -94,7 +99,12 @@ public class QuestionService {
 
         updateRedisCacheIfExists(dto.getQuestionId(), q);
 
-        return convert.toAnswerVO(a);
+        AnswerVO vo = convert.toAnswerVO(a);
+
+        // 给提问者发送“回答了我的问题”的通知
+        notificationService.createAnswerNotification(dto.getAuthorId(), dto.getQuestionId(), a.getAnswerId());
+
+        return vo;
     }
 
     /** 创建评论 */
@@ -126,7 +136,12 @@ public class QuestionService {
         updateRedisCacheIfExists(dto.getQuestionId(), q);
 
         // 转换为 VO 对象并返回
-        return convert.toCommentVO(comment);
+        CommentVO vo = convert.toCommentVO(comment);
+
+        // 给回答作者发送“评论我的回答”的通知
+        notificationService.createQuestionCommentNotification(dto.getAuthorId(), dto.getQuestionId(), dto.getAnswerId());
+
+        return vo;
     }
 
 
@@ -166,7 +181,12 @@ public class QuestionService {
         updateRedisCacheIfExists(dto.getQuestionId(), q);
 
         // 转换为 VO 对象并返回
-        return convert.toReplyVO(reply);
+        ReplyVO vo = convert.toReplyVO(reply);
+
+        // 给被回复的评论作者发送“回复我的评论”的通知
+        notificationService.createQuestionReplyNotification(dto.getAuthorId(), dto.getQuestionId(), dto.getAnswerId(), dto.getCommentId());
+
+        return vo;
     }
 
 
@@ -175,15 +195,21 @@ public class QuestionService {
         QuestionDO q = repo.findByQuestionId(questionId);
         if (q == null) return;
 
-        if (q.getLikes().contains(userId))
+        boolean alreadyLiked = q.getLikes().contains(userId);
+        if (alreadyLiked) {
             q.getLikes().remove(userId);
-        else
+        } else {
             q.getLikes().add(userId);
+        }
 
         repo.save(q);
 
         updateRedisCacheIfExists(questionId, q);
 
+        // 只有新点赞时才发送通知
+        if (!alreadyLiked) {
+            notificationService.createQuestionLikeNotification(userId, questionId);
+        }
     }
 
     /** 点赞回答 */
@@ -200,7 +226,8 @@ public class QuestionService {
         if (answer == null) return; // 如果没有找到该回答
 
         // 判断用户是否已点赞
-        if (answer.getLikes().contains(userId)) {
+        boolean alreadyLiked = answer.getLikes().contains(userId);
+        if (alreadyLiked) {
             answer.getLikes().remove(userId); // 如果已点赞，则移除
         } else {
             answer.getLikes().add(userId);    // 如果未点赞，则添加
@@ -210,6 +237,10 @@ public class QuestionService {
         repo.save(q);
 
         updateRedisCacheIfExists(questionId, q);
+
+        if (!alreadyLiked) {
+            notificationService.createAnswerLikeNotification(userId, questionId, answerId);
+        }
     }
 
     /** 点赞评论 */
@@ -234,7 +265,8 @@ public class QuestionService {
         if (comment == null) return; // 如果没有找到该评论
 
         // 判断用户是否已点赞
-        if (comment.getLikes().contains(userId)) {
+        boolean alreadyLiked = comment.getLikes().contains(userId);
+        if (alreadyLiked) {
             comment.getLikes().remove(userId); // 如果已点赞，则移除
         } else {
             comment.getLikes().add(userId);    // 如果未点赞，则添加
@@ -244,6 +276,10 @@ public class QuestionService {
         repo.save(q);
 
         updateRedisCacheIfExists(questionId, q);
+
+        if (!alreadyLiked) {
+            notificationService.createQuestionCommentLikeNotification(userId, questionId, answerId, commentId);
+        }
     }
 
     /** 点赞回复（二级评论） */
@@ -276,7 +312,8 @@ public class QuestionService {
         if (reply == null) return; // 如果没有找到该回复
 
         // 判断用户是否已点赞
-        if (reply.getLikes().contains(userId)) {
+        boolean alreadyLiked = reply.getLikes().contains(userId);
+        if (alreadyLiked) {
             reply.getLikes().remove(userId); // 如果已点赞，则移除
         } else {
             reply.getLikes().add(userId);    // 如果未点赞，则添加
@@ -286,6 +323,10 @@ public class QuestionService {
         repo.save(q);
 
         updateRedisCacheIfExists(questionId, q);
+
+        if (!alreadyLiked) {
+            notificationService.createQuestionReplyLikeNotification(userId, questionId, answerId, commentId, replyId);
+        }
     }
 
 
@@ -294,7 +335,8 @@ public class QuestionService {
         QuestionDO q = repo.findByQuestionId(questionId);
         if (q == null) return;
 
-        if (q.getFavorites().contains(userId))
+        boolean alreadyFavorite = q.getFavorites().contains(userId);
+        if (alreadyFavorite)
             q.getFavorites().remove(userId);
         else
             q.getFavorites().add(userId);
@@ -302,6 +344,10 @@ public class QuestionService {
         repo.save(q);
 
         updateRedisCacheIfExists(questionId, q);
+
+        if (!alreadyFavorite) {
+            notificationService.createQuestionFavoriteNotification(userId, questionId);
+        }
     }
 
     // 删除操作

@@ -152,6 +152,8 @@
                   v-for="comment in answer.comments"
                   :key="comment.commentId"
                   class="comment-item"
+                  :class="{ highlight: commentIdToHighlight === comment.commentId }"
+                  :data-comment-id="comment.commentId"
                 >
                   <div class="comment-header">
                     <div class="comment-meta">
@@ -206,6 +208,8 @@
                       v-for="reply in comment.replies"
                       :key="reply.replyId"
                       class="reply-item"
+                      :class="{ highlight: replyIdToHighlight === reply.replyId }"
+                      :data-reply-id="reply.replyId"
                     >
                       <div class="reply-header">
                         <div class="reply-meta">
@@ -289,7 +293,16 @@ const props = defineProps({
     type: String,
     required: true
   },
+  // 可选：用于高亮并滚动到指定回答 / 评论 / 回复
   answerId: {
+    type: [Number, String],
+    default: null
+  },
+  commentId: {
+    type: [Number, String],
+    default: null
+  },
+  replyId: {
     type: [Number, String],
     default: null
   }
@@ -300,6 +313,8 @@ const error = ref(null)
 const question = ref(null)
 const answerInput = ref('')
 const answerIdToHighlight = ref(null)
+const commentIdToHighlight = ref(null)
+const replyIdToHighlight = ref(null)
 
 // 评论相关状态
 const activeCommentAnswerId = ref(null)
@@ -320,10 +335,28 @@ const fetchQuestionDetail = async () => {
     if (data) {
       question.value = data
       
-      // 如果有answerId，高亮对应的回答
-      if (props.answerId) {
+      // 优先顺序：回复 → 评论 → 回答
+      if (props.replyId) {
+        replyIdToHighlight.value = Number(props.replyId)
+        setTimeout(() => {
+          const selector = `.reply-item[data-reply-id="${replyIdToHighlight.value}"]`
+          const element = document.querySelector(selector)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 300)
+      } else if (props.commentId) {
+        commentIdToHighlight.value = Number(props.commentId)
+        setTimeout(() => {
+          const selector = `.comment-item[data-comment-id="${commentIdToHighlight.value}"]`
+          const element = document.querySelector(selector)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 300)
+      } else if (props.answerId) {
+        // 如果有 answerId，高亮对应的回答
         answerIdToHighlight.value = Number(props.answerId)
-        // 滚动到对应回答
         setTimeout(() => {
           const element = document.querySelector('.answer-card.highlight')
           if (element) {
