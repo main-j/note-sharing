@@ -2,7 +2,7 @@
   <div class="main-shell">
     <header class="main-header app-layout">
       <div class="brand-logo-block">
-        <span class="brand-logo-text">NoteFlow</span>
+        <span class="brand-logo-text">Folio</span>
       </div>
 
       <nav class="main-nav-links" aria-label="主要导航">
@@ -1045,11 +1045,20 @@ onBeforeUnmount(() => {
 
 .brand-logo-text {
   font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
-  font-size: 26px;
-  font-weight: bold;
-  color: #007FFF;
+  font-size: 22px;
+  font-weight: 500;
+  color: #0a0a0a;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   user-select: none;
   cursor: pointer;
+  transition: color 0.3s ease, opacity 0.3s ease;
+  opacity: 0.9;
+}
+
+.brand-logo-text:hover {
+  color: #007FFF;
+  opacity: 1;
 }
 
 .main-nav-links {

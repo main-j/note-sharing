@@ -2,7 +2,7 @@
   <div class="admin-main-shell">
     <header class="admin-header">
       <div class="brand-logo-block">
-        <span class="brand-logo-text">NoteFlow 管理后台</span>
+        <span class="brand-logo-text">Folio 管理后台</span>
       </div>
 
       <nav class="admin-nav-links">
@@ -111,10 +111,13 @@ const handleLogout = () => {
 
 .brand-logo-text {
   font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
-  font-size: 20px;
-  font-weight: bold;
-  color: #007FFF;
+  font-size: 16px;
+  font-weight: 500;
+  color: #0a0a0a;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
   user-select: none;
+  opacity: 0.9;
 }
 
 .admin-nav-links {
