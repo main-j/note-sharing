@@ -11,6 +11,8 @@ import com.project.login.model.vo.NoteShowVO;
 import com.project.login.model.vo.NoteVO;
 import com.project.login.service.minio.MinioService;
 import com.project.login.service.notification.NotificationService;
+import com.project.login.repository.NoteRepository;
+import com.project.login.model.entity.NoteEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +40,7 @@ public class NoteService {
     private final ContentSummaryService contentSummaryService;
     private final NotificationService notificationService;
     private final NoteModerationMapper noteModerationMapper;
+    private final NoteRepository noteRepository;
 
     @Qualifier("noteConvert")
     private final NoteConvert convert;
@@ -358,14 +362,72 @@ public class NoteService {
 
     @Transactional(readOnly = true)
     public Long getNoteCount() {
-        return noteMapper.count();
+        // 与 getAllNotes() 保持一致的逻辑：只统计已发布且未审核中的笔记
+        // 1. 先查询有note_stats记录且不在审核中的笔记
+        List<NoteDO> doList = noteMapper.selectPublished();
+        
+        if (doList.isEmpty()) {
+            return 0L;
+        }
+        
+        // 2. 批量查询 Elasticsearch，获取已发布的笔记ID列表
+        // 因为只有 publishNote 才会发送 ES 事件，所以 ES 中有记录 = 已发布
+        List<Long> publishedNoteIds;
+        try {
+            Iterable<NoteEntity> esEntities = noteRepository.findAllById(
+                    doList.stream().map(NoteDO::getId).collect(Collectors.toList())
+            );
+            publishedNoteIds = new ArrayList<>();
+            for (NoteEntity entity : esEntities) {
+                if (entity != null && entity.getId() != null) {
+                    publishedNoteIds.add(entity.getId());
+                }
+            }
+        } catch (Exception e) {
+            log.error("批量查询ES中的笔记失败", e);
+            // 如果ES查询失败，返回0（安全起见）
+            return 0L;
+        }
+        
+        // 3. 统计在 Elasticsearch 中有记录的笔记数量（已发布）
+        return (long) publishedNoteIds.size();
     }
 
     @Transactional(readOnly = true)
     public List<NoteShowVO> getAllNotes() {
-        List<NoteDO> doList = noteMapper.selectAll();
+        // 只返回已发布的笔记（有note_stats记录），排除审核中的笔记
+        List<NoteDO> doList = noteMapper.selectPublished();
+        
+        if (doList.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // 批量查询 Elasticsearch，获取已发布的笔记ID列表
+        // 因为只有 publishNote 才会发送 ES 事件，所以 ES 中有记录 = 已发布
+        List<Long> publishedNoteIds;
+        try {
+            Iterable<NoteEntity> esEntities = noteRepository.findAllById(
+                    doList.stream().map(NoteDO::getId).collect(Collectors.toList())
+            );
+            publishedNoteIds = new ArrayList<>();
+            for (NoteEntity entity : esEntities) {
+                if (entity != null && entity.getId() != null) {
+                    publishedNoteIds.add(entity.getId());
+                }
+            }
+        } catch (Exception e) {
+            log.error("批量查询ES中的笔记失败", e);
+            // 如果ES查询失败，返回空列表（安全起见）
+            return new ArrayList<>();
+        }
+        
+        // 过滤掉未发布的笔记：只保留在 Elasticsearch 中有记录的笔记
+        List<NoteDO> publishedList = doList.stream()
+                .filter(noteDO -> publishedNoteIds.contains(noteDO.getId()))
+                .collect(Collectors.toList());
+        
         List<NoteShowVO> voList = new ArrayList<>();
-        for (NoteDO noteDO : doList) {
+        for (NoteDO noteDO : publishedList) {
             NoteShowVO vo = new NoteShowVO();
             vo.setId(noteDO.getId());
             vo.setTitle(noteDO.getTitle());

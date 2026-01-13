@@ -87,8 +87,38 @@ public interface NoteMapper {
     @Select("SELECT COUNT(*) FROM notes")
     Long count();
 
+    @Select("""
+            SELECT COUNT(*) 
+            FROM note_stats ns
+            WHERE ns.note_id NOT IN (
+                SELECT note_id 
+                FROM note_moderation 
+                WHERE status = 'FLAGGED' AND is_handled = FALSE
+            )
+            """)
+    Long countPublished();
+
     @Select("SELECT id, title, filename, file_type, notebook_id, created_at, updated_at " +
             "FROM notes ORDER BY id ASC")
     @ResultMap("NoteBaseResultMap")
     List<NoteDO> selectAll();
+
+    /**
+     * 查询已发布的笔记列表（排除审核中的笔记）
+     * 已发布的笔记：在note_stats表中有记录
+     * 排除审核中的笔记：在note_moderation表中status='FLAGGED'且is_handled=FALSE的笔记
+     */
+    @Select("""
+            SELECT n.id, n.title, n.filename, n.file_type, n.notebook_id, n.created_at, n.updated_at
+            FROM notes n
+            INNER JOIN note_stats ns ON n.id = ns.note_id
+            WHERE n.id NOT IN (
+                SELECT note_id 
+                FROM note_moderation 
+                WHERE status = 'FLAGGED' AND is_handled = FALSE
+            )
+            ORDER BY n.id ASC
+            """)
+    @ResultMap("NoteBaseResultMap")
+    List<NoteDO> selectPublished();
 }
