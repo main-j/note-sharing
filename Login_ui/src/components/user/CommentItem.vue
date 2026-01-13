@@ -9,9 +9,10 @@
       <div class="comment-header">
         <div class="comment-author-info">
           <img
-            :src="'/assets/avatars/avatar.png'"
+            :src="comment.avatarUrl || '/assets/avatars/avatar.png'"
             :alt="comment.username"
             class="comment-avatar"
+            @error="handleAvatarError"
           />
           <span class="comment-author">{{ comment.username || '匿名用户' }}</span>
         </div>
@@ -49,7 +50,7 @@
           回复
         </button>
         <button
-          v-if="isLoggedIn"
+          v-if="isLoggedIn && currentUserId && comment.userId === currentUserId"
           class="comment-action-btn danger"
           :disabled="commentActionLoading[comment._id]"
           @click="$emit('delete-comment', comment)"
@@ -94,6 +95,7 @@
         :comment="child"
         :depth="depth + 1"
         :is-logged-in="isLoggedIn"
+        :current-user-id="currentUserId"
         :replying-to-id="replyingToId"
         :reply-content="replyContent"
         :comment-submitting="commentSubmitting"
@@ -113,6 +115,14 @@
 import { defineProps } from 'vue'
 import { formatTime } from '@/utils/time'
 
+// 头像加载错误处理
+const handleAvatarError = (event) => {
+  // 如果头像加载失败，使用默认头像
+  if (event.target.src !== '/assets/avatars/avatar.png') {
+    event.target.src = '/assets/avatars/avatar.png'
+  }
+}
+
 const props = defineProps({
   comment: {
     type: Object,
@@ -125,6 +135,10 @@ const props = defineProps({
   isLoggedIn: {
     type: Boolean,
     default: false
+  },
+  currentUserId: {
+    type: [Number, String],
+    default: null
   },
   replyingToId: {
     type: String,

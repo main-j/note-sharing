@@ -25,10 +25,16 @@ public class RemarkController {
     @Operation(summary = "Get comments by note ID")
     @GetMapping("/note/list")
     public StandardResponse<List<RemarkVO>> getRemarksByNote(
-            @Valid RemarkSelectByNoteDTO dto,
+            @RequestParam Long noteId,
             @RequestParam Long loginUserId
     ) {
+        System.out.println("[RemarkController] 接收到的参数 - noteId: " + noteId + ", loginUserId: " + loginUserId);
+        RemarkSelectByNoteDTO dto = RemarkSelectByNoteDTO.builder().noteId(noteId).build();
         List<RemarkVO> voList = remarkService.SelectRemark(dto, loginUserId);
+        System.out.println("[RemarkController] 返回的评论数量: " + (voList != null ? voList.size() : 0));
+        if (voList != null && !voList.isEmpty()) {
+            System.out.println("[RemarkController] 第一条评论的noteId: " + voList.get(0).getNoteId());
+        }
         return StandardResponse.success(voList);
     }
 

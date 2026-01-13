@@ -157,6 +157,7 @@
               :comment="comment"
               :depth="0"
               :is-logged-in="userStore.isLoggedIn"
+              :current-user-id="getCurrentUserId()"
               :replying-to-id="replyingTo"
               :reply-content="replyContent"
               :comment-submitting="commentSubmitting"
@@ -205,6 +206,23 @@
       </aside>
     </div>
 
+    <!-- 删除评论确认对话框 -->
+    <div v-if="deleteCommentDialog.visible" class="modal-overlay" @click.self="cancelDeleteComment">
+      <div class="delete-dialog rename-dialog">
+        <h4 class="modal-title">删除评论</h4>
+        <p class="delete-message">
+          确定要删除这条评论吗？删除后无法恢复。
+        </p>
+
+        <div class="modal-actions">
+          <button class="modal-cancel-btn" @click="cancelDeleteComment">取消</button>
+          <button class="modal-confirm-btn delete-confirm-btn" @click="confirmDeleteComment">
+            确定删除
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 消息提示组件 -->
     <MessageToast
       v-if="showToast"
@@ -217,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getFileUrlByNoteId, getNoteStats, changeNoteStat } from '@/api/note'
 import { getRemarksByNote, insertRemark, deleteRemark, likeRemark, cancelLikeRemark } from '@/api/remark'
@@ -230,6 +248,8 @@ import MessageToast from '@/components/MessageToast.vue'
 import FollowButton from '@/components/FollowButton.vue'
 import CommentItem from '@/components/user/CommentItem.vue'
 import { useMessage } from '@/utils/message'
+import { Client as StompClient } from '@stomp/stompjs'
+import SockJS from 'sockjs-client'
 
 const router = useRouter()
 const route = useRoute()
@@ -281,6 +301,10 @@ const actionLoading = ref({
   likes: false,
   favorites: false
 })
+// 请求去重：记录正在进行的请求
+const pendingRequests = ref(new Set())
+// 防抖定时器
+const debounceTimers = ref({})
 const fileUrl = ref(null)
 const markdownContent = ref('')
 
@@ -294,9 +318,19 @@ const replyContent = ref('')
 const replyTarget = ref(null)       // 当前正在回复的整条评论对象
 const commentActionLoading = ref({})
 
+// 删除评论对话框状态
+const deleteCommentDialog = ref({
+  visible: false,
+  comment: null
+})
+
 // 作者相关状态
 const authorUserId = ref(null) // 作者的userId
 const authorUserIdLoading = ref(false) // 是否正在获取作者ID
+
+// WebSocket 相关状态
+let stompClient = null
+let commentSubscription = null
 
 // 配置markdown-it解析器
 const mdParser = new MarkdownIt({
@@ -400,29 +434,65 @@ const handleToggleStat = async (field) => {
   }
 
   const flagRef = field === 'likes' ? isLiked : isFavorited
-  if (actionLoading.value[field]) return
-
-  setActionLoading(field, true)
-  const delta = flagRef.value ? -1 : 1
-
-  try {
-    const updated = await changeNoteStat(noteDetail.value.noteId, userId, field, delta)
-    updateStatsFromResponse(updated)
-    flagRef.value = delta > 0
-    persistActionState(field, flagRef.value)
-    
-    // 通知父组件统计信息已更新
-    emit('stats-updated', {
-      noteId: noteDetail.value.noteId,
-      likes: stats.value.likes,
-      favorites: stats.value.favorites,
-      comments: stats.value.comments
-    })
-  } catch (err) {
-    console.error('更新笔记统计失败:', err)
-  } finally {
-    setActionLoading(field, false)
+  
+  // 防重复点击：如果正在加载或已有相同请求，直接返回
+  if (actionLoading.value[field]) {
+    console.log(`操作 ${field} 正在进行中，忽略重复点击`)
+    return
   }
+
+  // 创建请求唯一标识
+  const requestKey = `${field}_${noteDetail.value.noteId}_${userId}_${flagRef.value ? 'un' : ''}${field}`
+  
+  // 检查是否有相同的请求正在进行
+  if (pendingRequests.value.has(requestKey)) {
+    console.log(`操作 ${field} 的相同请求正在进行，忽略重复请求`)
+    return
+  }
+
+  // 清除之前的防抖定时器
+  if (debounceTimers.value[field]) {
+    clearTimeout(debounceTimers.value[field])
+  }
+
+  // 添加防抖：300ms内的重复点击会被忽略
+  debounceTimers.value[field] = setTimeout(async () => {
+    // 再次检查状态，防止状态在防抖期间发生变化
+    const currentFlagRef = field === 'likes' ? isLiked : isFavorited
+    const delta = currentFlagRef.value ? -1 : 1
+    
+    // 添加到进行中的请求集合
+    pendingRequests.value.add(requestKey)
+    setActionLoading(field, true)
+
+    try {
+      const updated = await changeNoteStat(noteDetail.value.noteId, userId, field, delta)
+      updateStatsFromResponse(updated)
+      
+      // 更新状态
+      const newState = delta > 0
+      flagRef.value = newState
+      persistActionState(field, newState)
+      
+      // 通知父组件统计信息已更新
+      emit('stats-updated', {
+        noteId: noteDetail.value.noteId,
+        likes: stats.value.likes,
+        favorites: stats.value.favorites,
+        comments: stats.value.comments
+      })
+    } catch (err) {
+      console.error('更新笔记统计失败:', err)
+      showError('操作失败，请稍后重试')
+      // 操作失败时，恢复状态
+      flagRef.value = !flagRef.value
+    } finally {
+      // 移除请求标识
+      pendingRequests.value.delete(requestKey)
+      setActionLoading(field, false)
+      delete debounceTimers.value[field]
+    }
+  }, 300) // 300ms防抖
 }
 
 // 获取笔记详情和统计信息
@@ -432,6 +502,14 @@ const fetchNoteDetail = async () => {
   isLiked.value = false
   isFavorited.value = false
   authorUserId.value = null // 重置作者ID，准备获取新笔记的作者信息
+  // 立即清空评论列表和相关状态，避免显示旧笔记的评论
+  comments.value = []
+  commentsLoading.value = false
+  newCommentContent.value = ''
+  replyingTo.value = null
+  replyTarget.value = null
+  replyContent.value = ''
+  commentActionLoading.value = {}
 
   try {
     // 确保noteId是有效的数字
@@ -493,6 +571,10 @@ const fetchNoteDetail = async () => {
         createdAt: noteInfo.createdAt || null
       }
       restoreActionState()
+      // 即使不支持的文件类型，也要加载评论列表
+      await fetchComments(noteId)
+      // 订阅 WebSocket
+      subscribeToComments()
       loading.value = false
       return // 提前返回，不加载文件内容，但保持标题、作者、点赞、收藏等功能正常
     }
@@ -508,8 +590,11 @@ const fetchNoteDetail = async () => {
     }
     restoreActionState()
 
-    // 加载评论列表
-    await fetchComments()
+    // 加载评论列表（直接传递noteId，确保使用正确的笔记ID）
+    await fetchComments(noteId)
+
+    // 订阅 WebSocket（笔记加载完成后）
+    subscribeToComments()
 
     // 如果是Markdown文件，获取内容并转换为HTML
     if (noteDetail.value.fileType === 'md') {
@@ -606,11 +691,17 @@ const goBack = () => {
 }
 
 // 监听noteId变化
-watch(() => props.noteId, () => {
-  if (props.noteId) {
+watch(() => props.noteId, (newNoteId, oldNoteId) => {
+  // 只有当noteId真正变化时才重新加载
+  if (newNoteId && newNoteId !== oldNoteId) {
+    console.log('[NoteDetailView] noteId变化，从', oldNoteId, '到', newNoteId)
     fetchNoteDetail()
+    // 重新订阅 WebSocket（noteId 变化后）
+    setTimeout(() => {
+      subscribeToComments()
+    }, 500) // 等待笔记加载完成
   }
-})
+}, { immediate: false })
 
 // 监听initialStats变化，如果统计信息更新了，也要更新显示
 watch(() => props.initialStats, (newStats) => {
@@ -626,34 +717,58 @@ watch(() => props.initialTitle, (newTitle) => {
   }
 }, { immediate: true })
 
-// 监听noteId变化，重新加载评论
-watch(() => props.noteId, () => {
-  if (props.noteId) {
-    fetchComments()
-  }
-})
-
 // 获取评论列表
-const fetchComments = async () => {
-  if (!noteDetail.value?.noteId) return
+const fetchComments = async (noteIdParam = null) => {
+  // 优先使用传入的参数，否则使用noteDetail中的noteId
+  let noteId = noteIdParam || noteDetail.value?.noteId
+  if (!noteId) {
+    console.warn('笔记ID不存在，无法获取评论')
+    // 确保清空评论列表
+    comments.value = []
+    return
+  }
   
-  const noteId = noteDetail.value.noteId
+  // 统一转换为数字类型，确保类型一致
+  noteId = typeof noteId === 'string' ? Number(noteId) : noteId
+  
   const userId = getCurrentUserId()
   
   if (!userId) {
     console.warn('用户未登录，无法获取评论')
+    // 确保清空评论列表
+    comments.value = []
     return
   }
 
+  // 在开始加载前，先清空评论列表，避免显示旧数据
+  comments.value = []
   commentsLoading.value = true
+  
   try {
+    console.log('[fetchComments] 开始获取评论，noteId:', noteId, 'userId:', userId, 'noteId类型:', typeof noteId)
     const remarks = await getRemarksByNote(noteId, userId)
-    console.log('获取到的评论数据:', remarks)
-    // 调试：打印第一条评论的详细信息
-    if (remarks && remarks.length > 0) {
-      console.log('第一条评论详情:', JSON.stringify(remarks[0], null, 2))
+    console.log('[fetchComments] 获取到的评论数据:', remarks)
+    console.log('[fetchComments] 评论数量:', remarks?.length || 0)
+    
+    // 确保只显示当前noteId的评论（使用类型转换后的值进行比较）
+    const filteredRemarks = remarks ? remarks.filter(r => {
+      // 统一转换为数字进行比较，避免类型不匹配问题
+      const rNoteId = typeof r.noteId === 'string' ? Number(r.noteId) : r.noteId
+      return rNoteId === noteId
+    }) : []
+    
+    console.log('[fetchComments] 过滤后的评论数量:', filteredRemarks.length)
+    
+    // 再次确认当前noteId是否匹配，防止在异步操作期间noteId已经变化
+    const currentNoteId = noteDetail.value?.noteId || noteIdParam || props.noteId
+    const currentNoteIdNum = typeof currentNoteId === 'string' ? Number(currentNoteId) : currentNoteId
+    
+    if (currentNoteIdNum === noteId) {
+      comments.value = filteredRemarks
+    } else {
+      console.warn('[fetchComments] 警告：noteId已变化，丢弃旧的评论数据。当前:', currentNoteIdNum, '请求的:', noteId)
+      comments.value = []
     }
-    comments.value = remarks || []
   } catch (err) {
     console.error('获取评论列表失败:', err)
     comments.value = []
@@ -691,7 +806,7 @@ const handleSubmitComment = async () => {
     newCommentContent.value = ''
     
     // 重新获取评论列表
-    await fetchComments()
+    await fetchComments(noteDetail.value.noteId)
     
     // 更新评论数统计（创建评论时增加1）
     if (stats.value) {
@@ -746,7 +861,7 @@ const submitReply = async (targetComment) => {
 
     await insertRemark(remarkData)
     cancelReply()
-    await fetchComments()
+    await fetchComments(noteDetail.value.noteId)
 
     if (stats.value) {
       stats.value.comments = (stats.value.comments || 0) + 1
@@ -816,15 +931,39 @@ const countCommentAndReplies = (comment) => {
   return count
 }
 
-// 删除评论
-const handleDeleteComment = async (comment) => {
-  if (!confirm('确定要删除这条评论吗？')) return
-
+// 显示删除评论确认对话框
+const showDeleteCommentDialog = (comment) => {
   const userId = getCurrentUserId()
   if (!userId) {
     console.warn('用户未登录，无法删除评论')
+    showError('请先登录后再进行此操作')
     return
   }
+
+  // 检查是否是评论作者
+  if (comment.userId !== userId) {
+    showError('只能删除自己的评论')
+    return
+  }
+
+  deleteCommentDialog.value = {
+    visible: true,
+    comment: comment
+  }
+}
+
+// 取消删除评论
+const cancelDeleteComment = () => {
+  deleteCommentDialog.value = {
+    visible: false,
+    comment: null
+  }
+}
+
+// 确认删除评论
+const confirmDeleteComment = async () => {
+  const comment = deleteCommentDialog.value.comment
+  if (!comment) return
 
   if (commentActionLoading.value[comment._id]) return
 
@@ -835,8 +974,11 @@ const handleDeleteComment = async (comment) => {
     
     await deleteRemark(comment._id)
     
+    // 关闭对话框
+    cancelDeleteComment()
+    
     // 重新获取评论列表
-    await fetchComments()
+    await fetchComments(noteDetail.value.noteId)
     
     // 更新评论数统计（减去被删除的评论及其所有子评论的数量）
     if (stats.value) {
@@ -847,6 +989,8 @@ const handleDeleteComment = async (comment) => {
         comments: stats.value.comments
       })
     }
+    
+    showSuccess('删除成功')
   } catch (err) {
     console.error('删除评论失败:', err)
     showError('删除失败，请稍后重试')
@@ -855,10 +999,160 @@ const handleDeleteComment = async (comment) => {
   }
 }
 
+// 删除评论（显示确认对话框）
+const handleDeleteComment = (comment) => {
+  showDeleteCommentDialog(comment)
+}
+
+// WebSocket 连接和订阅
+const connectWebSocket = () => {
+  // 如果已经连接，先断开
+  if (stompClient && stompClient.connected) {
+    disconnectWebSocket()
+  }
+
+  const userId = getCurrentUserId()
+  const userInfo = userStore.userInfo
+  if (!userId || !userInfo?.token) {
+    return
+  }
+
+  const socketUrl = 'http://localhost:8080/ws'
+  const socket = new SockJS(socketUrl)
+
+  stompClient = new StompClient({
+    webSocketFactory: () => socket,
+    reconnectDelay: 5000,
+    debug: () => {},
+    connectHeaders: {
+      Authorization: `Bearer ${userInfo.token}`
+    },
+    onConnect: () => {
+      subscribeToComments()
+    },
+    onStompError: (frame) => {
+      console.error('STOMP 错误', frame)
+    }
+  })
+
+  stompClient.activate()
+}
+
+// 订阅评论更新
+const subscribeToComments = () => {
+  if (!stompClient || !stompClient.connected) {
+    return
+  }
+
+  const noteId = noteDetail.value?.noteId || props.noteId
+  if (!noteId) {
+    return
+  }
+
+  // 如果已经订阅，先取消订阅
+  if (commentSubscription) {
+    commentSubscription.unsubscribe()
+    commentSubscription = null
+  }
+
+  const destination = `/topic/note.${noteId}.comments`
+  commentSubscription = stompClient.subscribe(destination, (message) => {
+    try {
+      const newRemark = JSON.parse(message.body)
+      console.log('收到新评论:', newRemark)
+      
+      // 检查是否是当前笔记的评论
+      const currentNoteId = noteDetail.value?.noteId || props.noteId
+      if (newRemark.noteId !== currentNoteId) {
+        return
+      }
+
+      // 更新 LikedOrNot（根据当前用户）
+      const currentUserId = getCurrentUserId()
+      if (currentUserId) {
+        // 检查当前用户是否点赞了这条评论
+        // 这里简化处理，设为 false，实际应该从后端获取或检查
+        newRemark.LikedOrNot = false
+      }
+
+      // 如果是回复，需要找到父评论并添加到其 replies 中
+      if (newRemark.isReply && newRemark.parentId) {
+        // 递归查找父评论
+        const findAndAddReply = (commentList, parentId, reply) => {
+          for (const comment of commentList) {
+            if (comment._id === parentId) {
+              if (!comment.replies) {
+                comment.replies = []
+              }
+              // 检查是否已存在（避免重复）
+              const exists = comment.replies.some(r => r._id === reply._id)
+              if (!exists) {
+                comment.replies.push(reply)
+              }
+              return true
+            }
+            // 递归查找子评论
+            if (comment.replies && comment.replies.length > 0) {
+              if (findAndAddReply(comment.replies, parentId, reply)) {
+                return true
+              }
+            }
+          }
+          return false
+        }
+
+        // 尝试添加到现有评论的回复中
+        const added = findAndAddReply(comments.value, newRemark.parentId, newRemark)
+        
+        // 如果没找到父评论，说明父评论可能还没加载，重新获取评论列表
+        if (!added) {
+          fetchComments(currentNoteId)
+        }
+      } else {
+        // 一级评论，直接添加到列表
+        // 检查是否已存在（避免重复）
+        const exists = comments.value.some(c => c._id === newRemark._id)
+        if (!exists) {
+          comments.value.push(newRemark)
+          // 更新评论数统计
+          if (stats.value) {
+            stats.value.comments = (stats.value.comments || 0) + 1
+            emit('stats-updated', {
+              noteId: currentNoteId,
+              comments: stats.value.comments
+            })
+          }
+        }
+      }
+    } catch (err) {
+      console.error('解析 WebSocket 评论消息失败:', err)
+    }
+  })
+}
+
+// 断开 WebSocket 连接
+const disconnectWebSocket = () => {
+  if (commentSubscription) {
+    commentSubscription.unsubscribe()
+    commentSubscription = null
+  }
+  if (stompClient) {
+    stompClient.deactivate()
+    stompClient = null
+  }
+}
+
 onMounted(() => {
   if (props.noteId) {
     fetchNoteDetail()
   }
+  // 连接 WebSocket
+  connectWebSocket()
+})
+
+onUnmounted(() => {
+  // 组件卸载时断开 WebSocket
+  disconnectWebSocket()
 })
 </script>
 
@@ -1705,7 +1999,7 @@ onMounted(() => {
 
 .action-sidebar {
   position: sticky;
-  top: 80px;
+  top: 72px; /* 导航栏高度52px + 20px间距 */
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1842,6 +2136,93 @@ onMounted(() => {
 
 .back-button:hover {
   background: #006EDC;
+}
+
+/* 删除评论确认对话框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.delete-dialog {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 450px;
+}
+
+.modal-title {
+  margin-top: 0;
+  margin-bottom: 25px;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.delete-message {
+  margin-bottom: 25px;
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-cancel-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  background: #f0f0f0;
+  color: #666;
+  transition: background-color 0.2s;
+}
+
+.modal-cancel-btn:hover {
+  background: #e0e0e0;
+}
+
+.modal-confirm-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  background: var(--brand-primary);
+  color: white;
+  transition: background-color 0.2s;
+}
+
+.modal-confirm-btn:hover:not(:disabled) {
+  background: #006EDC;
+}
+
+.modal-confirm-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.delete-confirm-btn {
+  background: #dc3545;
+}
+
+.delete-confirm-btn:hover:not(:disabled) {
+  background: #c82333;
 }
 
 @media (max-width: 768px) {

@@ -303,9 +303,9 @@ const handleNotificationAvatarError = (event) => {
   event.target.src = '/assets/avatars/avatar.png'
 }
 
-const loadNotificationUserInfo = async (actorId) => {
+const loadNotificationUserInfo = async (actorId, forceRefresh = false) => {
   if (!actorId) return
-  if (notificationUserInfoMap.value[actorId]) return
+  if (!forceRefresh && notificationUserInfoMap.value[actorId]) return
   try {
     const res = await getUserById(actorId)
     const data = res.data || res
@@ -333,7 +333,7 @@ const refreshNotificationUnread = async () => {
   }
 }
 
-const loadNotifications = async () => {
+const loadNotifications = async (forceRefreshAvatars = false) => {
   if (!currentUserId.value) {
     notifications.value = []
     return
@@ -343,9 +343,9 @@ const loadNotifications = async () => {
     const arr = Array.isArray(list) ? list : []
     notifications.value = arr
 
-    // 加载所有通知发送者的头像信息
+    // 加载所有通知发送者的头像信息，如果强制刷新则忽略缓存
     const actorIds = Array.from(new Set(arr.map(n => n.actorId).filter(Boolean)))
-    await Promise.all(actorIds.map(id => loadNotificationUserInfo(id)))
+    await Promise.all(actorIds.map(id => loadNotificationUserInfo(id, forceRefreshAvatars)))
   } catch (e) {
     console.error('加载通知列表失败', e)
   }
@@ -354,7 +354,8 @@ const loadNotifications = async () => {
 const toggleNotificationPanel = async () => {
   showNotificationPanel.value = !showNotificationPanel.value
   if (showNotificationPanel.value) {
-    await Promise.all([loadNotifications(), refreshNotificationUnread()])
+    // 打开通知面板时，强制刷新所有用户的头像信息以显示最新头像
+    await Promise.all([loadNotifications(true), refreshNotificationUnread()])
   }
 }
 
@@ -474,10 +475,17 @@ watch(currentTab, (newTab, oldTab) => {
   // 但如果是从详情页返回（有 keyword），则保留 searchType
   if (newTab === 'search' && !route.query.keyword) {
     delete newQuery.searchType
+    // 清除 noteId，避免在搜索页时还保留旧的 noteId
+    delete newQuery.noteId
+    delete newQuery.title
+    delete newQuery.fileType
   }
   // 如果是从详情页返回到搜索页，确保保留搜索参数
   else if (newTab === 'search' && oldTab === 'note-detail' && route.query.keyword) {
-    // 保留 keyword 和 searchType，不做任何删除操作
+    // 保留 keyword 和 searchType，但清除 noteId 相关参数
+    delete newQuery.noteId
+    delete newQuery.title
+    delete newQuery.fileType
   }
   
   // 如果是从详情页返回到其他页面，清除详情页相关参数
@@ -547,9 +555,13 @@ const restoreNoteDetailFromRoute = () => {
     if (noteIdFromQuery) {
       const noteId = Number(noteIdFromQuery)
       if (!isNaN(noteId) && noteId > 0) {
-        viewingNoteId.value = noteId
-        // 从 URL 恢复标题
-        noteDetailTitle.value = route.query.title || null
+        // 只有当 viewingNoteId 为空或与 URL 中的 noteId 不一致时才更新
+        // 这样可以避免覆盖 handleOpenNoteDetail 中已经设置的值
+        if (!viewingNoteId.value || viewingNoteId.value !== noteId) {
+          viewingNoteId.value = noteId
+          // 从 URL 恢复标题
+          noteDetailTitle.value = route.query.title || null
+        }
       }
     }
   }
@@ -608,6 +620,31 @@ watch(() => route.query.workspaceId, (newWorkspaceId) => {
     }
   }
 })
+
+// 监听 noteId 变化，确保 viewingNoteId 与 URL 同步
+watch(() => route.query.noteId, (newNoteId, oldNoteId) => {
+  // 只有在 note-detail tab 时才更新 viewingNoteId
+  if (currentTab.value === 'note-detail' && newNoteId) {
+    const noteId = Number(newNoteId)
+    if (!isNaN(noteId) && noteId > 0) {
+      // 只有当 noteId 真正变化时才更新，避免不必要的更新
+      if (viewingNoteId.value !== noteId) {
+        console.log('[MainView] noteId 变化，从', viewingNoteId.value, '到', noteId)
+        viewingNoteId.value = noteId
+        // 同时更新标题（如果 URL 中有）
+        noteDetailTitle.value = route.query.title || null
+      }
+    }
+  } else if (currentTab.value !== 'note-detail' && oldNoteId && !newNoteId) {
+    // 当离开 note-detail tab 且 noteId 被清除时，也清除 viewingNoteId
+    if (viewingNoteId.value) {
+      console.log('[MainView] 清除 viewingNoteId，因为离开了 note-detail tab')
+      viewingNoteId.value = null
+      noteDetailTitle.value = null
+      noteDetailStats.value = null
+    }
+  }
+}, { immediate: true })
 
 // --- 新增状态和方法来管理编辑器视图 ---
 
@@ -956,6 +993,23 @@ watch(() => currentTab.value, (newTab) => {
   }
 })
 
+// 监听用户头像更新，同步更新通知中的头像缓存
+watch(() => userInfo.value.avatarUrl, async (newAvatarUrl, oldAvatarUrl) => {
+  // 当头像更新时，更新通知用户信息映射中的当前用户头像
+  if (currentUserId.value && newAvatarUrl && newAvatarUrl !== oldAvatarUrl) {
+    // 直接更新缓存中的头像URL
+    if (notificationUserInfoMap.value[currentUserId.value]) {
+      notificationUserInfoMap.value[currentUserId.value].avatarUrl = newAvatarUrl
+    }
+    // 强制重新加载当前用户信息以确保同步
+    await loadNotificationUserInfo(currentUserId.value, true)
+    // 如果通知面板是打开的，重新加载通知列表以刷新显示
+    if (showNotificationPanel.value) {
+      await loadNotifications()
+    }
+  }
+})
+
 // 组件挂载时，确保 URL 中有 tab 参数，并尝试恢复编辑器状态
 onMounted(async () => {
   if (!route.query.tab) {
@@ -1035,6 +1089,13 @@ onBeforeUnmount(() => {
   box-shadow: none;
   border-radius: 0;
   border: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* --- Logo / Nav Links (保持不变) --- */
@@ -1291,10 +1352,11 @@ onBeforeUnmount(() => {
 .main-content {
   flex: 1;
   padding: 20px;
+  margin-top: 52px;
 }
 
 .notification-panel {
-  position: absolute;
+  position: fixed;
   top: 64px;
   right: 32px;
   width: 360px;
@@ -1415,9 +1477,14 @@ onBeforeUnmount(() => {
   .main-header {
     flex-wrap: wrap;
     height: auto;
+    min-height: 52px;
     padding: 10px 20px;
     gap: 15px;
     justify-content: space-between;
+  }
+
+  .main-content {
+    margin-top: 100px; /* 移动端导航栏高度更大，需要更多空间 */
   }
 
   .brand-logo-block {

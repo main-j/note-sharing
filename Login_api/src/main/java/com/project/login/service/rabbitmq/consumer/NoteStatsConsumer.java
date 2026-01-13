@@ -36,10 +36,11 @@ public class NoteStatsConsumer {
 
             String authorName = String.valueOf(data.getOrDefault("authorName", ""));
 
-            long views = parseLongSafe(data.getOrDefault("views", 0));
-            long likes = parseLongSafe(data.getOrDefault("likes", 0));
-            long favorites = parseLongSafe(data.getOrDefault("favorites", 0));
-            long comments = parseLongSafe(data.getOrDefault("comments", 0));
+            // 确保值不为负数
+            long views = Math.max(0, parseLongSafe(data.getOrDefault("views", 0)));
+            long likes = Math.max(0, parseLongSafe(data.getOrDefault("likes", 0)));
+            long favorites = Math.max(0, parseLongSafe(data.getOrDefault("favorites", 0)));
+            long comments = Math.max(0, parseLongSafe(data.getOrDefault("comments", 0)));
             LocalDateTime lastActivity = parseDateTimeSafe(data.get("last_activity_at"));
             long version = parseLongSafe(data.getOrDefault("version", 0));
 
