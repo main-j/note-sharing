@@ -23,6 +23,10 @@ public enum NotificationType {
 
     // 动态相关
     FOLLOWEE_PUBLISH_NOTE,     // 我关注的人发布了笔记
-    FOLLOWEE_PUBLISH_QUESTION  // 我关注的人发布了问题
+    FOLLOWEE_PUBLISH_QUESTION, // 我关注的人发布了问题
+    
+    // 审查相关
+    NOTE_MODERATION_APPROVED,   // 笔记审查通过
+    NOTE_MODERATION_REJECTED    // 笔记审查未通过
 }
 

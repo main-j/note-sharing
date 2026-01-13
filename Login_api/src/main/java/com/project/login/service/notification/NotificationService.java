@@ -94,6 +94,34 @@ public class NotificationService {
         });
     }
 
+    /** 笔记审查通过 */
+    public void createNoteModerationApprovedNotification(Long actorId, Long noteId, String noteTitle) {
+        Long ownerId = resolveNoteOwnerId(noteId);
+        if (ownerId == null) return;
+        NotificationDO entity = buildBase(ownerId, actorId, NotificationType.NOTE_MODERATION_APPROVED, "NOTE", String.valueOf(noteId));
+        entity.setMessage(String.format("您的笔记《%s》已通过管理员审查并成功发布。", noteTitle));
+        try {
+            notificationRepository.save(entity);
+        } catch (Exception e) {
+            log.warn("保存笔记审查通过通知失败 noteId={}", noteId, e);
+        }
+    }
+
+    /** 笔记审查未通过 */
+    public void createNoteModerationRejectedNotification(Long actorId, Long noteId, String noteTitle, String reason) {
+        Long ownerId = resolveNoteOwnerId(noteId);
+        if (ownerId == null) return;
+        NotificationDO entity = buildBase(ownerId, actorId, NotificationType.NOTE_MODERATION_REJECTED, "NOTE", String.valueOf(noteId));
+        String message = String.format("您的笔记《%s》未通过管理员审查。原因：%s", 
+            noteTitle, reason != null && !reason.trim().isEmpty() ? reason : "内容不符合平台规范");
+        entity.setMessage(message);
+        try {
+            notificationRepository.save(entity);
+        } catch (Exception e) {
+            log.warn("保存笔记审查未通过通知失败 noteId={}", noteId, e);
+        }
+    }
+
     /** 我关注的人发布了笔记 */
     public void createNotePublishNotifications(Long noteId) {
         Long ownerId = resolveNoteOwnerId(noteId);
@@ -295,6 +323,8 @@ public class NotificationService {
             case QA_REPLY -> actor + " 回复了你在问答下的评论";
             case FOLLOWEE_PUBLISH_NOTE -> actor + " 发布了一篇新的笔记";
             case FOLLOWEE_PUBLISH_QUESTION -> actor + " 发布了一个新的问题";
+            case NOTE_MODERATION_APPROVED -> n.getMessage() != null ? n.getMessage() : actor + " 通过了你的笔记审查";
+            case NOTE_MODERATION_REJECTED -> n.getMessage() != null ? n.getMessage() : actor + " 未通过你的笔记审查";
         };
     }
 

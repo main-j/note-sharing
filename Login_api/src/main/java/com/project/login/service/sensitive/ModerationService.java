@@ -8,8 +8,10 @@ import com.project.login.mapper.NotebookMapper;
 import com.project.login.mapper.NoteSpaceMapper;
 import com.project.login.model.dataobject.NoteModerationDO;
 import com.project.login.model.dataobject.NoteDO;
-import com.project.login.service.conversationService.ConversationService;
 import com.project.login.service.noting.NoteService;
+import com.project.login.service.notification.NotificationService;
+import com.project.login.mapper.UserMapper;
+import com.project.login.model.entity.UserEntity;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -46,8 +48,9 @@ public class ModerationService {
     private final MinioService minioService;
     private final DeepFilterService deepFilterService;
     private final ContentSummaryService contentSummaryService;
-    private final ConversationService conversationService;
     private final NoteService noteService;
+    private final NotificationService notificationService;
+    private final UserMapper userMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public void saveResult(SensitiveCheckResult r) {
@@ -355,7 +358,7 @@ public class ModerationService {
     }
 
     /**
-     * 处理审查结果（通过/未通过，发布/退回，发送私信）
+     * 处理审查结果（通过/未通过，发布/退回，发送通知）
      * @param moderationId 审查记录ID
      * @param approved true=通过，false=未通过
      * @param adminComment 管理员备注
@@ -390,7 +393,12 @@ public class ModerationService {
         moderation.setAdminComment(adminComment);
         noteModerationMapper.updateHandled(moderation);
 
-        String message;
+        // 获取管理员用户ID
+        Long adminId = getAdminUserId();
+        if (adminId == null) {
+            log.warn("无法获取管理员用户ID，跳过发送通知");
+            return;
+        }
         
         if (approved) {
             // 通过：发布笔记
@@ -457,24 +465,33 @@ public class ModerationService {
                 // 发布笔记
                 noteService.publishNote(publishDTO);
                 
-                message = String.format("您的笔记《%s》已通过管理员审查并成功发布。", note.getTitle());
+                // 发送审查通过通知
+                try {
+                    notificationService.createNoteModerationApprovedNotification(adminId, noteId, note.getTitle());
+                } catch (Exception e) {
+                    log.error("发送审查通过通知失败", e);
+                    // 通知发送失败不影响审查结果
+                }
             } catch (Exception e) {
                 log.error("发布笔记失败", e);
-                message = String.format("您的笔记《%s》已通过管理员审查，但发布过程中出现错误，请联系管理员。", note.getTitle());
+                // 即使发布失败，也发送通知告知用户审查通过但发布出错
+                try {
+                    notificationService.createNoteModerationApprovedNotification(adminId, noteId, note.getTitle());
+                } catch (Exception ex) {
+                    log.error("发送审查通知失败", ex);
+                }
             }
         } else {
-            // 未通过：退回
-            message = String.format("您的笔记《%s》未通过管理员审查。原因：%s", 
-                note.getTitle(), 
-                adminComment != null && !adminComment.trim().isEmpty() ? adminComment : "内容不符合平台规范");
-        }
-
-        // 发送私信给用户
-        try {
-            conversationService.sendAdminMessage(authorId, message);
-        } catch (Exception e) {
-            log.error("发送私信失败", e);
-            // 私信发送失败不影响审查结果
+            // 未通过：退回，发送审查未通过通知
+            String reason = adminComment != null && !adminComment.trim().isEmpty() 
+                ? adminComment 
+                : "内容不符合平台规范";
+            try {
+                notificationService.createNoteModerationRejectedNotification(adminId, noteId, note.getTitle(), reason);
+            } catch (Exception e) {
+                log.error("发送审查未通过通知失败", e);
+                // 通知发送失败不影响审查结果
+            }
         }
     }
 
@@ -492,6 +509,37 @@ public class ModerationService {
             return noteSpaceMapper.selectUserIdBySpaceId(spaceId);
         } catch (Exception e) {
             log.error("获取笔记作者ID失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 获取管理员用户ID
+     */
+    private Long getAdminUserId() {
+        try {
+            // 通过管理员邮箱查找真实的管理员用户ID
+            String adminEmail = "chennzh5@mail2.sysu.edu.cn";
+            UserEntity adminUser = userMapper.selectByEmail(adminEmail);
+            
+            if (adminUser != null && adminUser.getId() != null) {
+                return adminUser.getId();
+            }
+            
+            // 如果找不到管理员用户，尝试通过用户名查找（备用方案）
+            String[] adminUsernames = {"admin", "administrator", "管理员"};
+            for (String username : adminUsernames) {
+                UserEntity adminByUsername = userMapper.selectByUsername(username);
+                if (adminByUsername != null && adminByUsername.getId() != null && "Admin".equals(adminByUsername.getRole())) {
+                    return adminByUsername.getId();
+                }
+            }
+            
+            log.error("无法找到管理员用户（邮箱: {}, 尝试的用户名: {}）", 
+                adminEmail, String.join(", ", adminUsernames));
+            return null;
+        } catch (Exception e) {
+            log.error("获取管理员用户ID失败", e);
             return null;
         }
     }

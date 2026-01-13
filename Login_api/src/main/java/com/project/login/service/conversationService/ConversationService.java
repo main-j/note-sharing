@@ -42,11 +42,40 @@ public class ConversationService {
     
     /** 管理员发送消息（不需要互相关注），返回 conversationId */
     public String sendAdminMessage(Long receiverId, String content) {
-        // 管理员ID固定为0或特殊值，这里使用0作为管理员ID
-        Long adminId = 0L;
+        // 通过管理员邮箱查找真实的管理员用户ID
+        // 使用admin-whitelist.json中的第一个管理员邮箱
+        String adminEmail = "chennzh5@mail2.sysu.edu.cn";
+        com.project.login.model.entity.UserEntity adminUser = userMapper.selectByEmail(adminEmail);
+        
+        Long adminId;
+        if (adminUser != null && adminUser.getId() != null) {
+            adminId = adminUser.getId();
+            log.info("【管理员私信】使用管理员用户ID: {}, 用户名: {}", adminId, adminUser.getUsername());
+        } else {
+            // 如果找不到管理员用户，尝试通过用户名查找（备用方案）
+            // 尝试常见的管理员用户名
+            String[] adminUsernames = {"admin", "administrator", "管理员"};
+            adminId = null;
+            for (String username : adminUsernames) {
+                com.project.login.model.entity.UserEntity adminByUsername = userMapper.selectByUsername(username);
+                if (adminByUsername != null && adminByUsername.getId() != null && "Admin".equals(adminByUsername.getRole())) {
+                    adminId = adminByUsername.getId();
+                    log.info("【管理员私信】通过用户名找到管理员用户ID: {}, 用户名: {}", adminId, username);
+                    break;
+                }
+            }
+            
+            if (adminId == null) {
+                log.error("【管理员私信】无法找到管理员用户（邮箱: {}, 尝试的用户名: {}），私信可能无法正常显示", 
+                    adminEmail, String.join(", ", adminUsernames));
+                // 如果找不到管理员，返回null而不是使用0，避免创建无效的会话
+                return null;
+            }
+        }
         
         // 校验接收者
         if (userMapper.selectById(receiverId) == null) {
+            log.warn("【管理员私信】接收者用户不存在: {}", receiverId);
             return null;
         }
         
