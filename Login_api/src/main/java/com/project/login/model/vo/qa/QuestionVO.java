@@ -9,6 +9,7 @@ import java.util.List;
 public class QuestionVO {
     private String questionId;
     private Long authorId;
+    private String authorName;  // 提问者用户名
     private String title;
     private String content;
     private List<String> tags;

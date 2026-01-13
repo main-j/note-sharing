@@ -201,7 +201,8 @@ const upsertQuestion = (questionVO) => {
     favoriteCount: questionVO.favoriteCount || 0,
     answerCount: questionVO.answers?.length || 0,
     answers: questionVO.answers || [],
-    authorName: `用户 #${questionVO.authorId}` // 可以后续优化获取用户名
+    // 使用后端返回的 authorName，如果没有则使用后备值
+    authorName: questionVO.authorName || `用户 #${questionVO.authorId}`
   }
   
   if (idx >= 0) {

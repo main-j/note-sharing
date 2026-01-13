@@ -9,6 +9,7 @@ import java.util.List;
 public class AnswerVO {
     private Long answerId;
     private Long authorId;
+    private String authorName;  // 回答者用户名
     private String content;
     private LocalDateTime createdAt;
 
