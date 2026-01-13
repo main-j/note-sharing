@@ -9,9 +9,10 @@
       <div class="comment-header">
         <div class="comment-author-info">
           <img
-            :src="'/assets/avatars/avatar.png'"
+            :src="comment.avatarUrl || '/assets/avatars/avatar.png'"
             :alt="comment.username"
             class="comment-avatar"
+            @error="handleAvatarError"
           />
           <span class="comment-author">{{ comment.username || '匿名用户' }}</span>
         </div>
@@ -112,6 +113,14 @@
 <script setup>
 import { defineProps } from 'vue'
 import { formatTime } from '@/utils/time'
+
+// 头像加载错误处理
+const handleAvatarError = (event) => {
+  // 如果头像加载失败，使用默认头像
+  if (event.target.src !== '/assets/avatars/avatar.png') {
+    event.target.src = '/assets/avatars/avatar.png'
+  }
+}
 
 const props = defineProps({
   comment: {

@@ -2,7 +2,6 @@ package com.project.login.model.vo;
 
 import lombok.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 
@@ -21,6 +20,9 @@ public class RemarkVO {
 
     /** 评论用户 */
     private String username;
+
+    /** 评论用户头像 */
+    private String avatarUrl;
 
     /** 评论内容 */
     private String content;

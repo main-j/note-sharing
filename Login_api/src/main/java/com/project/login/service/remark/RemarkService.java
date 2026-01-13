@@ -116,6 +116,22 @@ public class RemarkService {
         cur.setLikedOrNot(liked);
         cur.setLikeCount(likedCount);
 
+        // ------ 设置用户头像 ------
+        if (remarkDO.getUserId() != null) {
+            try {
+                UserDO commentAuthor = userMapper.selectById(remarkDO.getUserId());
+                if (commentAuthor != null && commentAuthor.getAvatarUrl() != null) {
+                    cur.setAvatarUrl(commentAuthor.getAvatarUrl());
+                } else {
+                    // 如果没有头像，设置为默认值或空字符串
+                    cur.setAvatarUrl(null);
+                }
+            } catch (Exception e) {
+                log.warn("获取评论用户头像失败，userId: {}", remarkDO.getUserId(), e);
+                cur.setAvatarUrl(null);
+            }
+        }
+
         return cur;
     }
 
