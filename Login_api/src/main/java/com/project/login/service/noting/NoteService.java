@@ -36,6 +36,7 @@ public class NoteService {
     private final NoteEventPublisher eventPublisher;
     private final ContentSummaryService contentSummaryService;
     private final NotificationService notificationService;
+    private final NoteModerationMapper noteModerationMapper;
 
     @Qualifier("noteConvert")
     private final NoteConvert convert;
@@ -108,6 +109,11 @@ public class NoteService {
         NoteDO existing = noteMapper.selectById(dto.getMeta().getId());
         if (existing == null) throw new RuntimeException("笔记不存在");
 
+        // 检查笔记是否在审核中
+        if (isNoteUnderModeration(existing.getId())) {
+            throw new RuntimeException("笔记正在审核中，无法修改");
+        }
+
         // 上传文件并获取文件名和URL
         MultipartFile file = dto.getFile();
         String contentSummary = contentSummaryService.extractContentSummary(file);
@@ -135,6 +141,11 @@ public class NoteService {
         NoteDO existing = noteMapper.selectById(dto.getNoteId());
         if (existing == null) throw new RuntimeException("笔记不存在");
 
+        // 检查笔记是否在审核中
+        if (isNoteUnderModeration(existing.getId())) {
+            throw new RuntimeException("笔记正在审核中，无法删除");
+        }
+
         minioservice.deleteFile(existing.getFilename());
 
         noteMapper.deleteById(dto.getNoteId());
@@ -155,6 +166,11 @@ public class NoteService {
 
         NoteDO note = noteMapper.selectById(dto.getNoteId());
         if (note == null) throw new RuntimeException("笔记不存在");
+
+        // 检查笔记是否在审核中
+        if (isNoteUnderModeration(note.getId())) {
+            throw new RuntimeException("笔记正在审核中，无法移动");
+        }
 
         if (notebookMapper.selectById(dto.getTargetNotebookId()) == null) {
             throw new RuntimeException("笔记本不存在");
@@ -268,6 +284,11 @@ public class NoteService {
         NoteDO note = noteMapper.selectById(dto.getId());
         if (note == null) throw new RuntimeException("笔记不存在");
         
+        // 检查笔记是否在审核中
+        if (isNoteUnderModeration(note.getId())) {
+            throw new RuntimeException("笔记正在审核中，无法重命名");
+        }
+        
         // 2. 检查重命名后的名称是否在同一笔记本下已存在（排除当前笔记本身）
         // 如果新名称和旧名称相同，则允许（不需要检查）
         if (!note.getTitle().equals(dto.getNewName())) {
@@ -380,6 +401,28 @@ public class NoteService {
             voList.add(vo);
         }
         return voList;
+    }
+
+    /**
+     * 检查笔记是否在审核中
+     * @param noteId 笔记ID
+     * @return true=在审核中，false=不在审核中
+     */
+    private boolean isNoteUnderModeration(Long noteId) {
+        try {
+            // 直接使用Mapper查询，避免循环依赖
+            List<com.project.login.model.dataobject.NoteModerationDO> moderationList = noteModerationMapper.selectByNoteId(noteId);
+            if (moderationList == null || moderationList.isEmpty()) {
+                return false;
+            }
+            // 如果存在未处理的审核记录（status=FLAGGED且isHandled=false），说明笔记在审核中
+            return moderationList.stream()
+                    .anyMatch(m -> "FLAGGED".equals(m.getStatus()) && Boolean.FALSE.equals(m.getIsHandled()));
+        } catch (Exception e) {
+            log.warn("检查笔记审核状态失败 noteId={}", noteId, e);
+            // 检查失败时，为了安全起见，返回true（阻止操作）
+            return true;
+        }
     }
 
 }

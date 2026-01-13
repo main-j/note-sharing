@@ -602,6 +602,25 @@ const debouncedUpdateNote = debounce(async (meta, file) => {
   // 检查 ID 是否存在，确保在有效笔记上操作
   if (!meta.id) return;
 
+  // 检查笔记是否在审核中（防抖延迟期间可能状态变化）
+  try {
+    const isUnderModeration = await isNoteUnderModeration(meta.id);
+    if (isUnderModeration) {
+      console.warn('笔记正在审核中，取消自动保存');
+      // 恢复编辑器内容
+      if (editor.value && currentNote.value) {
+        const htmlContent = mdParser.render(currentNote.value.content || '');
+        editor.value.commands.setContent(htmlContent, false);
+      }
+      showError('笔记正在审核中，无法修改');
+      return;
+    }
+  } catch (error) {
+    console.error('检查审核状态失败:', error);
+    // 检查失败时，为了安全起见，取消保存
+    return;
+  }
+
   try {
     isLoading.value = true;
 
@@ -1257,6 +1276,12 @@ const handleAction = async (action, noteId) => {
       const newTitle = await showRenameDialog(noteId, note.title);
 
       if (newTitle && newTitle !== note.title) {
+        // 检查笔记是否在审核中
+        if (await isNoteUnderModeration(noteId)) {
+          showError('笔记正在审核中，无法重命名');
+          return;
+        }
+        
         try {
           // 【API调用点 D】: 重命名笔记 (PUT /noting/notes/rename)
           const updateResult = await renameNote(noteId, newTitle);
@@ -1282,6 +1307,12 @@ const handleAction = async (action, noteId) => {
         }
       }
     } else if (action === '移动到') {
+      // 检查笔记是否在审核中
+      if (await isNoteUnderModeration(noteId)) {
+        showError('笔记正在审核中，无法移动');
+        return;
+      }
+      
       const targetNotebookId = await showMoveToDialog(noteId, note.title, props.notebookList);
 
       if (targetNotebookId) {
@@ -1356,12 +1387,18 @@ const handleAction = async (action, noteId) => {
         showError('下载失败，可能是跨域限制或网络问题，请检查控制台。');
       }
     } else if (action === '删除') {
+      // 检查笔记是否在审核中
+      if (await isNoteUnderModeration(noteId)) {
+        showError('笔记正在审核中，无法删除');
+        return;
+      }
+      
       // **调用自定义弹窗，并等待 Promise 结果**
       const isConfirmed = await showDeleteDialog(noteId, note.title);
 
       // 检查 Promise 返回的布尔值
       if (isConfirmed) {
-        // isConfirmed === true，表示用户点击了“确定删除”
+        // isConfirmed === true，表示用户点击了"确定删除"
         // 【API调用点 E】: 删除笔记 (DELETE /noting/notes)
         await deleteNote(noteId);
         const deletedId = noteId;
@@ -1489,6 +1526,14 @@ const updateCurrentNoteTitle = async () => {
 
   // 标题不变动或为空则不进行 API 调用
   if (currentNote.value.title === currentTitle.value || currentTitle.value.trim() === '') return;
+
+  // 检查笔记是否在审核中
+  if (await isNoteUnderModeration(currentNote.value.id)) {
+    // 恢复原标题
+    currentTitle.value = currentNote.value.title;
+    showError('笔记正在审核中，无法修改标题');
+    return;
+  }
 
   try {
     const newTitle = currentTitle.value;
@@ -1727,6 +1772,9 @@ const confirmModeration = async () => {
         Object.assign(noteInList, savedVo);
       }
       
+      // 立即更新审核状态，锁定笔记编辑
+      isNoteUnderModerationRef.value = true;
+      
       showModerationDialog.value = false;
       isLoading.value = false;
       
@@ -1769,12 +1817,45 @@ const isNoteUnderModeration = async (noteId) => {
   if (!noteId) return false;
   try {
     const { getNoteModerationHistory } = await import('@/api/admin');
-    const moderationList = await getNoteModerationHistory(noteId);
-    // 如果存在未处理的审核记录，说明笔记在审核中
-    return moderationList && moderationList.some(m => !m.isHandled);
+    const response = await getNoteModerationHistory(noteId);
+    
+    // 处理可能的响应格式：可能是 StandardResponse { code, message, data } 或直接是数组
+    let moderationList = null;
+    if (response && typeof response === 'object') {
+      // 如果是 StandardResponse 格式，提取 data 字段
+      if (response.code !== undefined && response.data !== undefined) {
+        moderationList = response.data;
+      } else if (Array.isArray(response)) {
+        // 如果直接是数组
+        moderationList = response;
+      } else if (response.data && Array.isArray(response.data)) {
+        // 如果 response.data 是数组
+        moderationList = response.data;
+      }
+    }
+    
+    // 如果存在未处理的FLAGGED审核记录，说明笔记在审核中
+    // 需要同时检查 status === 'FLAGGED' 和 isHandled === false
+    if (!moderationList || !Array.isArray(moderationList) || moderationList.length === 0) {
+      return false;
+    }
+    
+    const isUnderModeration = moderationList.some(m => 
+      m && m.status === 'FLAGGED' && (m.isHandled === false || m.isHandled === null)
+    );
+    
+    console.log(`笔记 ${noteId} 审核状态检查:`, {
+      moderationList,
+      isUnderModeration,
+      flaggedCount: moderationList.filter(m => m && m.status === 'FLAGGED').length,
+      unhandledCount: moderationList.filter(m => m && m.status === 'FLAGGED' && (m.isHandled === false || m.isHandled === null)).length
+    });
+    
+    return isUnderModeration;
   } catch (error) {
     console.error('检查审核状态失败:', error);
-    return false; // 出错时返回false，允许编辑
+    // 出错时为了安全起见，返回true（阻止编辑）
+    return true;
   }
 };
 
