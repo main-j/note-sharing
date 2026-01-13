@@ -36,6 +36,25 @@ public class ConversationService {
         if(!userFollowService.isMutualFollow(senderId,receiverId)){
             return null;
         }
+        
+        return sendMessageInternal(senderId, receiverId, content);
+    }
+    
+    /** 管理员发送消息（不需要互相关注），返回 conversationId */
+    public String sendAdminMessage(Long receiverId, String content) {
+        // 管理员ID固定为0或特殊值，这里使用0作为管理员ID
+        Long adminId = 0L;
+        
+        // 校验接收者
+        if (userMapper.selectById(receiverId) == null) {
+            return null;
+        }
+        
+        return sendMessageInternal(adminId, receiverId, content);
+    }
+    
+    /** 内部发送消息方法（不检查互相关注） */
+    private String sendMessageInternal(Long senderId, Long receiverId, String content) {
         // 保证 user1 < user2
         Long user1 = Math.min(senderId, receiverId);
         Long user2 = Math.max(senderId, receiverId);

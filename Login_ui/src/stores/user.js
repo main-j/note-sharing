@@ -34,6 +34,7 @@ export const useUserStore = defineStore('user', {
             token: localStorage.getItem('token') || null, // 保存 Token
         },
         isAuthenticated: !!localStorage.getItem('token'), // 根据 token 判断是否登录
+        loginType: localStorage.getItem('loginType') || null, // 记录登录入口：'user' 或 'admin'
     }),
 
     getters: {
@@ -51,8 +52,9 @@ export const useUserStore = defineStore('user', {
          * 【推荐】从 Token 解码并设置用户数据
          * 用于登录成功后或应用初始化时
          * @param {string} token - JWT Token 字符串
+         * @param {string} loginType - 登录入口类型：'user' 或 'admin'（可选）
          */
-        decodeAndSetToken(token) {
+        decodeAndSetToken(token, loginType = null) {
             const payload = decodeJwtPayload(token);
 
             if (payload) {
@@ -68,8 +70,14 @@ export const useUserStore = defineStore('user', {
                 this.userInfo.avatarUrl = payload.avatarUrl || null;
                 this.userInfo.role = payload.role || 'User'; // 提取角色信息
 
+                // 3. 设置登录入口类型（如果提供）
+                if (loginType) {
+                    this.loginType = loginType;
+                    localStorage.setItem('loginType', loginType);
+                }
+
                 this.isAuthenticated = true;
-                console.log('Pinia: Token 解析成功，用户数据已设置。角色:', this.userInfo.role);
+                console.log('Pinia: Token 解析成功，用户数据已设置。角色:', this.userInfo.role, '登录入口:', this.loginType);
                 return true;
             }
             this.clearUserData(); // 如果解码失败，则清除数据
@@ -79,8 +87,9 @@ export const useUserStore = defineStore('user', {
         /**
          * 【可选】直接设置用户数据到 Store (例如：通过 /me 接口获取后调用)
          * @param {Object} user - 包含用户信息的对象 (来自 /me 接口)
+         * @param {string} loginType - 登录入口类型：'user' 或 'admin'（可选）
          */
-        setUserData(user) {
+        setUserData(user, loginType = null) {
             // 确保使用后端 /me 接口返回的字段名
             this.userInfo.id = user.id;
             this.userInfo.username = user.username;
@@ -88,9 +97,26 @@ export const useUserStore = defineStore('user', {
             this.userInfo.studentNumber = user.studentNumber;
             this.userInfo.avatarUrl = user.avatarUrl || null;
             this.userInfo.role = user.role || 'User'; // 设置角色信息
+            
+            // 设置登录入口类型（如果提供）
+            if (loginType) {
+                this.loginType = loginType;
+                localStorage.setItem('loginType', loginType);
+            }
+            
             this.isAuthenticated = true;
 
-            console.log('Pinia: 用户数据已设置:', user.username, '角色:', this.userInfo.role);
+            console.log('Pinia: 用户数据已设置:', user.username, '角色:', this.userInfo.role, '登录入口:', this.loginType);
+        },
+        
+        /**
+         * 设置登录入口类型
+         * @param {string} loginType - 'user' 或 'admin'
+         */
+        setLoginType(loginType) {
+            this.loginType = loginType;
+            localStorage.setItem('loginType', loginType);
+            console.log('Pinia: 登录入口已设置:', loginType);
         },
 
         /**
@@ -107,7 +133,9 @@ export const useUserStore = defineStore('user', {
                 token: null
             };
             this.isAuthenticated = false;
+            this.loginType = null;
             localStorage.removeItem('token');
+            localStorage.removeItem('loginType');
             console.log('Pinia: 用户数据已清除');
         },
     },

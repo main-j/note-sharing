@@ -66,13 +66,13 @@ export const checkSensitiveText = async (text) => {
   return res.data
 }
 
-// 检查笔记敏感词（快速模式）
+// 检查笔记敏感词（全文模式）
 export const checkNoteSensitive = async (noteId) => {
   const res = await request.get(`/admin/sensitive/check/note/${noteId}`)
   return res.data
 }
 
-// 检查笔记敏感词（全文模式）
+// 检查笔记敏感词（全文模式，兼容旧接口）
 export const checkNoteSensitiveFull = async (noteId) => {
   const res = await request.get(`/admin/sensitive/check/note/${noteId}/full`)
   return res.data
@@ -110,9 +110,28 @@ export const reloadDeepCheckWords = async () => {
 }
 
 // ========== 内容审查管理 ==========
+// 提交审查记录（标记笔记为审核中）
+export const submitModeration = async (noteId, checkResult) => {
+  const res = await request.post('/admin/moderation/submit', {
+    noteId: noteId,
+    status: checkResult.status || 'FLAGGED',
+    riskLevel: checkResult.riskLevel || 'MEDIUM',
+    score: checkResult.score || 0,
+    categories: checkResult.categories || [],
+    findings: checkResult.findings || []
+  })
+  return res.data
+}
+
 // 获取待处理的审查记录列表
 export const getPendingModerations = async () => {
   const res = await request.get('/admin/moderation/pending')
+  return res.data
+}
+
+// 获取待审核的笔记列表
+export const getPendingNotes = async () => {
+  const res = await request.get('/admin/moderation/pending-notes')
   return res.data
 }
 
@@ -128,8 +147,27 @@ export const getNoteModerationHistory = async (noteId) => {
   return res.data
 }
 
+// 审查笔记（调用深度检测）
+export const reviewNote = async (noteId) => {
+  const res = await request.get(`/admin/moderation/review/${noteId}`)
+  return res.data
+}
+
+// 处理审查结果（通过/未通过，发布/退回，发送私信）
+export const handleReviewResult = async (moderationId, approved, adminComment) => {
+  const res = await request.post('/admin/moderation/review-result', {
+    moderationId,
+    approved,
+    adminComment
+  })
+  return res.data
+}
+
 // 处理审查记录
-export const handleModeration = async (id, adminNote) => {
-  const res = await request.post(`/admin/moderation/${id}/handle`, { adminNote })
+export const handleModeration = async (id, adminComment, isHandled = true) => {
+  const res = await request.post(`/admin/moderation/${id}/handle`, { 
+    adminComment: adminComment || '',
+    isHandled: isHandled
+  })
   return res.data
 }

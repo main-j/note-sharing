@@ -31,52 +31,62 @@ router.beforeEach(async (to, from, next) => {
   // 关键：获取 Store 实例
   const userStore = useUserStore()
 
-  // 管理员路由特殊处理
+  // 管理员路由特殊处理 - 所有 /admin/* 路径（除了 /admin/login）都需要管理员权限
   if (to.path.startsWith('/admin')) {
     if (to.path === '/admin/login') {
       // 访问管理员登录页
       if (token) {
-        // 已登录，尝试跳转到管理员主界面
-        return next('/admin/main')
+        // 已登录，检查用户角色
+        if (!userStore.isLoggedIn) {
+          const isTokenValid = userStore.decodeAndSetToken(token)
+          if (!isTokenValid) {
+            userStore.clearUserData()
+            return next()
+          }
+        }
+        
+        // 如果用户是管理员，跳转到管理员主界面
+        if (userStore.userInfo.role === 'Admin') {
+          return next('/admin/main')
+        }
       }
       return next()
     }
     
-    if (to.meta.requiresAuth || to.meta.requiresAdmin) {
-      // 访问需要管理员权限的页面
-      if (!token) {
+    // 所有其他 /admin/* 路径都需要管理员权限（无论是否有 meta 标记）
+    // 访问需要管理员权限的页面
+    if (!token) {
+      return next('/admin/login')
+    }
+
+    // 验证 token 并获取用户信息
+    if (!userStore.isLoggedIn) {
+      const isTokenValid = userStore.decodeAndSetToken(token)
+      if (!isTokenValid) {
+        userStore.clearUserData()
         return next('/admin/login')
       }
-
-      // 验证 token 并获取用户信息
-      if (!userStore.isLoggedIn) {
-        const isTokenValid = userStore.decodeAndSetToken(token)
-        if (!isTokenValid) {
-          userStore.clearUserData()
-          return next('/admin/login')
-        }
-      }
-
-      try {
-        const res = await request.get('/auth/me')
-        userStore.setUserData(res.data)
-        
-        // 可以在这里检查用户角色是否为管理员
-        // 如果后端返回了 role 字段，可以验证是否为 'Admin'
-        // const userRole = res.data.role
-        // if (userRole !== 'Admin') {
-        //   userStore.clearUserData()
-        //   return next('/admin/login')
-        // }
-        
-        next()
-      } catch (err) {
-        console.error('管理员 Token 验证失败:', err)
-        userStore.clearUserData()
-        next('/admin/login')
-      }
-      return
     }
+
+    try {
+      const res = await request.get('/auth/me')
+      userStore.setUserData(res.data)
+      
+      // 检查用户角色是否为管理员 - 非admin用户（Users）不能访问管理端
+      const userRole = res.data.role
+      if (userRole !== 'Admin') {
+        console.warn('用户角色不是管理员，无法访问管理端')
+        userStore.clearUserData()
+        return next('/main') // 重定向到用户主界面
+      }
+      
+      next()
+    } catch (err) {
+      console.error('管理员 Token 验证失败:', err)
+      userStore.clearUserData()
+      next('/admin/login')
+    }
+    return
   }
 
   // 普通用户路由处理

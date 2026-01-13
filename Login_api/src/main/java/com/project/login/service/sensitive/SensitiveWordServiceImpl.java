@@ -33,7 +33,11 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
     private final NoteMapper noteMapper;
     private final MinioService minioService;
     private final ContentSummaryService contentSummaryService;
+    private final FastFilterService fastFilterService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    // 注入FastFilterService用于调用快速过滤API
+    // FastFilterService已在构造函数中注入
 
     @Value("${modelscope.base-url:https://api-inference.modelscope.cn/v1}")
     private String baseUrl;
@@ -50,26 +54,30 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
     @Value("${sensitive.scan.concurrency:4}")
     private int scanConcurrency;
 
+
     @Override
     public SensitiveCheckResult checkNote(Long noteId) {
-        return checkNote(noteId, false);
+        return checkNote(noteId, true); // 统一使用全文检查
     }
 
     @Override
     public SensitiveCheckResult checkNote(Long noteId, boolean full) {
         NoteDO note = noteMapper.selectById(noteId);
-        if (note == null) throw new RuntimeException("笔记不存在");
+        if (note == null) {
+            // 笔记不存在时返回错误结果
+            SensitiveCheckResult errorResult = new SensitiveCheckResult();
+            errorResult.setStatus("ERROR");
+            errorResult.setMessage("内容不存在");
+            errorResult.setCheckedAt(Instant.now().toString());
+            return errorResult;
+        }
         byte[] bytes = minioService.download(note.getFilename());
         
         // 提取文本内容
         String text = contentSummaryService.extractFullText(bytes, note.getFilename());
         
-        // 如果是摘要模式，只取前200字符
-        if (!full && text.length() > 200) {
-            text = text.substring(0, 200);
-        }
-
-        SensitiveCheckResult res = full ? scanWithChunks(text) : callLLM(text);
+        // 统一使用全文检查（scanWithChunks）
+        SensitiveCheckResult res = scanWithChunks(text);
         SensitiveCheckResult.NoteMeta meta = new SensitiveCheckResult.NoteMeta();
         meta.setNoteId(noteId);
         meta.setTitle(note.getTitle());
@@ -79,10 +87,163 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
 
     @Override
     public SensitiveCheckResult checkText(String text) {
-        return callLLM(text);
+        // 使用全文检测逻辑（LLM+文本命中）
+        return scanWithChunks(text);
     }
 
-    private SensitiveCheckResult callLLM(String text) {
+    private JsonNode tryParseJson(String s) {
+        try {
+            return objectMapper.readTree(s.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void fillFromJson(SensitiveCheckResult result, JsonNode json) {
+        result.setStatus(json.path("status").asText("FLAGGED"));
+        result.setRiskLevel(json.path("riskLevel").asText("MEDIUM"));
+        result.setScore(json.path("score").isNumber() ? json.path("score").asDouble() : null);
+
+        List<String> cats = new ArrayList<>();
+        JsonNode ca = json.path("categories");
+        if (ca.isArray()) {
+            for (JsonNode c : ca) {
+                String v = c.asText();
+                if ("敏感词".equals(v) || "粗俗语言".equals(v) || "污言秽语".equals(v)) v = "profanity";
+                cats.add(v);
+            }
+        }
+        result.setCategories(cats);
+
+        List<SensitiveCheckResult.Finding> findings = new ArrayList<>();
+        JsonNode fa = json.path("findings");
+        if (fa.isArray()) {
+            for (JsonNode f : fa) {
+                SensitiveCheckResult.Finding fi = new SensitiveCheckResult.Finding();
+                fi.setTerm(f.path("term").asText(null));
+                String cat = f.path("category").asText(null);
+                if ("敏感词".equals(cat) || "粗俗语言".equals(cat) || "污言秽语".equals(cat)) cat = "profanity";
+                fi.setCategory(cat);
+                fi.setConfidence(f.path("confidence").isNumber() ? f.path("confidence").asDouble() : null);
+                fi.setSnippet(f.path("snippet").asText(null));
+                fi.setStartOffset(f.path("startOffset").isInt() ? f.path("startOffset").asInt() : null);
+                fi.setEndOffset(f.path("endOffset").isInt() ? f.path("endOffset").asInt() : null);
+                findings.add(fi);
+            }
+        }
+        result.setFindings(findings);
+    }
+
+    private String normalizeContent(String s) {
+        String t = s == null ? "" : s;
+        t = t.replace("```json", "").replace("```", "");
+        t = t.replace("\r", "\n");
+        return t.trim();
+    }
+
+    /**
+     * 全文检查：分块并发调用LLM，并使用快速过滤API检测词库命中
+     * 应用新的危险等级划分规则：LLM + hits+hitCount>=5（替换10%逻辑）
+     */
+    private SensitiveCheckResult scanWithChunks(String text) {
+        List<String> parts = splitText(text, chunkSize);
+        SensitiveCheckResult aggregate = new SensitiveCheckResult();
+        aggregate.setStatus("SAFE");
+        aggregate.setRiskLevel("LOW");
+        aggregate.setScore(0.0);
+        aggregate.setCategories(new ArrayList<>());
+        aggregate.setFindings(new ArrayList<>());
+        long start = System.currentTimeMillis();
+        
+        // 使用快速过滤API检测词库命中
+        List<String> fastFilterHits = fastFilterService.match(text);
+        int hitCount = fastFilterHits.size();
+        boolean hasFastFilterHit = hitCount >= 5; // hits+hitCount>=5 替换10%逻辑
+        
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, scanConcurrency));
+        List<Future<SensitiveCheckResult>> futures = new ArrayList<>();
+        for (String p : parts) {
+            futures.add(pool.submit(() -> callLLMWithoutWordLib(p))); // 使用不包含词库检测的LLM调用
+        }
+        pool.shutdown();
+        for (Future<SensitiveCheckResult> f : futures) {
+            try {
+                SensitiveCheckResult r = f.get(5, TimeUnit.MINUTES);
+                if ("ERROR".equals(r.getStatus())) {
+                    aggregate.setStatus("ERROR");
+                    aggregate.setMessage(r.getMessage());
+                    continue;
+                }
+                if (aggregate.getModel() == null && r.getModel() != null) aggregate.setModel(r.getModel());
+                if ("FLAGGED".equals(r.getStatus())) {
+                    aggregate.setStatus("FLAGGED");
+                    if (aggregate.getScore() == null || r.getScore() != null && r.getScore() > aggregate.getScore()) {
+                        aggregate.setScore(r.getScore());
+                    }
+                    if ("HIGH".equals(r.getRiskLevel())) aggregate.setRiskLevel("HIGH");
+                    else if ("MEDIUM".equals(r.getRiskLevel()) && !"HIGH".equals(aggregate.getRiskLevel())) aggregate.setRiskLevel("MEDIUM");
+                    if (r.getCategories() != null) {
+                        for (String c : r.getCategories()) {
+                            if (!aggregate.getCategories().contains(c)) aggregate.getCategories().add(c);
+                        }
+                    }
+                    if (r.getFindings() != null) aggregate.getFindings().addAll(r.getFindings());
+                }
+                if (r.getTokenUsage() != null) {
+                    SensitiveCheckResult.TokenUsage tu = aggregate.getTokenUsage();
+                    if (tu == null) tu = new SensitiveCheckResult.TokenUsage();
+                    Integer p1 = r.getTokenUsage().getPromptTokens();
+                    Integer c1 = r.getTokenUsage().getCompletionTokens();
+                    Integer t1 = r.getTokenUsage().getTotalTokens();
+                    tu.setPromptTokens((tu.getPromptTokens() == null ? 0 : tu.getPromptTokens()) + (p1 == null ? 0 : p1));
+                    tu.setCompletionTokens((tu.getCompletionTokens() == null ? 0 : tu.getCompletionTokens()) + (c1 == null ? 0 : c1));
+                    tu.setTotalTokens((tu.getTotalTokens() == null ? 0 : tu.getTotalTokens()) + (t1 == null ? 0 : t1));
+                    aggregate.setTokenUsage(tu);
+                }
+            } catch (Exception e) {
+                aggregate.setStatus("ERROR");
+                aggregate.setMessage("并发任务失败");
+            }
+        }
+        
+        // 应用新的危险等级划分规则：LLM + hits+hitCount>=5（替换10%逻辑，去除sex.txt逻辑）
+        String originalRiskLevel = aggregate.getRiskLevel();
+        if (originalRiskLevel == null) {
+            originalRiskLevel = "LOW";
+        }
+        
+        // 规则1: 如果LLM返回LOW，hits+hitCount>=5升级为MEDIUM
+        if ("LOW".equals(originalRiskLevel) && hasFastFilterHit) {
+            aggregate.setRiskLevel("MEDIUM");
+            if (aggregate.getStatus() == null || "SAFE".equals(aggregate.getStatus())) {
+                aggregate.setStatus("FLAGGED");
+            }
+            if (aggregate.getScore() == null || aggregate.getScore() < 50.0) {
+                aggregate.setScore(50.0);
+            }
+            log.info("【全文检查】LLM返回LOW，快速过滤命中数{}>=5，升级为MEDIUM", hitCount);
+            originalRiskLevel = "MEDIUM"; // 更新originalRiskLevel以便后续规则判断
+        }
+        // 规则2: 如果LLM返回MEDIUM，hits+hitCount>=5升级为HIGH
+        if ("MEDIUM".equals(originalRiskLevel) && hasFastFilterHit) {
+            aggregate.setRiskLevel("HIGH");
+            aggregate.setStatus("FLAGGED");
+            if (aggregate.getScore() == null || aggregate.getScore() < 70.0) {
+                aggregate.setScore(70.0);
+            }
+            log.info("【全文检查】LLM返回MEDIUM，快速过滤命中数{}>=5，升级为HIGH", hitCount);
+        }
+        // 规则3: 如果LLM返回HIGH，保持HIGH（不需要额外处理，已在聚合时设置）
+        
+        aggregate.setCheckedAt(Instant.now().toString());
+        aggregate.setDurationMs(System.currentTimeMillis() - start);
+        return aggregate;
+    }
+    
+    /**
+     * 调用LLM但不包含词库检测逻辑（用于scanWithChunks，词库检测在外部统一处理）
+     */
+    private SensitiveCheckResult callLLMWithoutWordLib(String text) {
         long start = System.currentTimeMillis();
         log.info("【LLM审查】开始调用，文本长度: {}", text.length());
         RestTemplate rt = new RestTemplate();
@@ -174,8 +335,7 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
             String trimmed = content.trim();
             String normalized = normalizeContent(trimmed);
 
-            List<SensitiveCheckResult.Finding> pre = detectProfanity(text);
-            if (normalized.equalsIgnoreCase("SAFE") && pre.isEmpty()) {
+            if (normalized.equalsIgnoreCase("SAFE")) {
                 result.setStatus("SAFE");
                 result.setRiskLevel("LOW");
                 result.setScore(0.0);
@@ -206,15 +366,6 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
                     f.setSnippet(sn);
                     result.setFindings(List.of(f));
                 }
-                if (!pre.isEmpty()) {
-                    if (result.getStatus() == null || "SAFE".equals(result.getStatus())) result.setStatus("FLAGGED");
-                    if (result.getRiskLevel() == null || "LOW".equals(result.getRiskLevel())) result.setRiskLevel("MEDIUM");
-                    if (result.getCategories() == null) result.setCategories(new ArrayList<>());
-                    if (!result.getCategories().contains("profanity")) result.getCategories().add("profanity");
-                    if (result.getFindings() == null) result.setFindings(new ArrayList<>());
-                    result.getFindings().addAll(pre);
-                    if (result.getScore() == null || result.getScore() < 60.0) result.setScore(60.0);
-                }
             }
         } catch (Exception e) {
             log.error("【LLM审查】结果解析失败: body=" + body, e);
@@ -235,115 +386,6 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
         return result;
     }
 
-    private JsonNode tryParseJson(String s) {
-        try {
-            return objectMapper.readTree(s.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void fillFromJson(SensitiveCheckResult result, JsonNode json) {
-        result.setStatus(json.path("status").asText("FLAGGED"));
-        result.setRiskLevel(json.path("riskLevel").asText("MEDIUM"));
-        result.setScore(json.path("score").isNumber() ? json.path("score").asDouble() : null);
-
-        List<String> cats = new ArrayList<>();
-        JsonNode ca = json.path("categories");
-        if (ca.isArray()) {
-            for (JsonNode c : ca) {
-                String v = c.asText();
-                if ("敏感词".equals(v) || "粗俗语言".equals(v) || "污言秽语".equals(v)) v = "profanity";
-                cats.add(v);
-            }
-        }
-        result.setCategories(cats);
-
-        List<SensitiveCheckResult.Finding> findings = new ArrayList<>();
-        JsonNode fa = json.path("findings");
-        if (fa.isArray()) {
-            for (JsonNode f : fa) {
-                SensitiveCheckResult.Finding fi = new SensitiveCheckResult.Finding();
-                fi.setTerm(f.path("term").asText(null));
-                String cat = f.path("category").asText(null);
-                if ("敏感词".equals(cat) || "粗俗语言".equals(cat) || "污言秽语".equals(cat)) cat = "profanity";
-                fi.setCategory(cat);
-                fi.setConfidence(f.path("confidence").isNumber() ? f.path("confidence").asDouble() : null);
-                fi.setSnippet(f.path("snippet").asText(null));
-                fi.setStartOffset(f.path("startOffset").isInt() ? f.path("startOffset").asInt() : null);
-                fi.setEndOffset(f.path("endOffset").isInt() ? f.path("endOffset").asInt() : null);
-                findings.add(fi);
-            }
-        }
-        result.setFindings(findings);
-    }
-
-    private String normalizeContent(String s) {
-        String t = s == null ? "" : s;
-        t = t.replace("```json", "").replace("```", "");
-        t = t.replace("\r", "\n");
-        return t.trim();
-    }
-
-    private SensitiveCheckResult scanWithChunks(String text) {
-        List<String> parts = splitText(text, chunkSize);
-        SensitiveCheckResult aggregate = new SensitiveCheckResult();
-        aggregate.setStatus("SAFE");
-        aggregate.setRiskLevel("LOW");
-        aggregate.setScore(0.0);
-        aggregate.setCategories(new ArrayList<>());
-        aggregate.setFindings(new ArrayList<>());
-        long start = System.currentTimeMillis();
-        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, scanConcurrency));
-        List<Future<SensitiveCheckResult>> futures = new ArrayList<>();
-        for (String p : parts) {
-            futures.add(pool.submit(() -> callLLM(p)));
-        }
-        pool.shutdown();
-        for (Future<SensitiveCheckResult> f : futures) {
-            try {
-                SensitiveCheckResult r = f.get(5, TimeUnit.MINUTES);
-                if ("ERROR".equals(r.getStatus())) {
-                    aggregate.setStatus("ERROR");
-                    aggregate.setMessage(r.getMessage());
-                    continue;
-                }
-                if (aggregate.getModel() == null && r.getModel() != null) aggregate.setModel(r.getModel());
-                if ("FLAGGED".equals(r.getStatus())) {
-                    aggregate.setStatus("FLAGGED");
-                    if (aggregate.getScore() == null || r.getScore() != null && r.getScore() > aggregate.getScore()) {
-                        aggregate.setScore(r.getScore());
-                    }
-                    if ("HIGH".equals(r.getRiskLevel())) aggregate.setRiskLevel("HIGH");
-                    else if ("MEDIUM".equals(r.getRiskLevel()) && !"HIGH".equals(aggregate.getRiskLevel())) aggregate.setRiskLevel("MEDIUM");
-                    if (r.getCategories() != null) {
-                        for (String c : r.getCategories()) {
-                            if (!aggregate.getCategories().contains(c)) aggregate.getCategories().add(c);
-                        }
-                    }
-                    if (r.getFindings() != null) aggregate.getFindings().addAll(r.getFindings());
-                }
-                if (r.getTokenUsage() != null) {
-                    SensitiveCheckResult.TokenUsage tu = aggregate.getTokenUsage();
-                    if (tu == null) tu = new SensitiveCheckResult.TokenUsage();
-                    Integer p1 = r.getTokenUsage().getPromptTokens();
-                    Integer c1 = r.getTokenUsage().getCompletionTokens();
-                    Integer t1 = r.getTokenUsage().getTotalTokens();
-                    tu.setPromptTokens((tu.getPromptTokens() == null ? 0 : tu.getPromptTokens()) + (p1 == null ? 0 : p1));
-                    tu.setCompletionTokens((tu.getCompletionTokens() == null ? 0 : tu.getCompletionTokens()) + (c1 == null ? 0 : c1));
-                    tu.setTotalTokens((tu.getTotalTokens() == null ? 0 : tu.getTotalTokens()) + (t1 == null ? 0 : t1));
-                    aggregate.setTokenUsage(tu);
-                }
-            } catch (Exception e) {
-                aggregate.setStatus("ERROR");
-                aggregate.setMessage("并发任务失败");
-            }
-        }
-        aggregate.setCheckedAt(Instant.now().toString());
-        aggregate.setDurationMs(System.currentTimeMillis() - start);
-        return aggregate;
-    }
-
     private List<String> splitText(String text, int size) {
         List<String> parts = new ArrayList<>();
         if (text == null) return parts;
@@ -354,27 +396,4 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
         return parts;
     }
 
-    private List<SensitiveCheckResult.Finding> detectProfanity(String text) {
-        List<SensitiveCheckResult.Finding> list = new ArrayList<>();
-        String t = text == null ? "" : text;
-        String[] words = new String[] {"操你妈", "傻逼", "妈的", "滚你妈的", "去你妈的", "草泥马", "干你娘"};
-        for (String w : words) {
-            int idx = t.indexOf(w);
-            if (idx >= 0) {
-                SensitiveCheckResult.Finding f = new SensitiveCheckResult.Finding();
-                f.setTerm(w);
-                f.setCategory("profanity");
-                f.setConfidence(0.99);
-                int s = Math.max(0, idx - 20);
-                int e = Math.min(t.length(), idx + w.length() + 20);
-                String sn = t.substring(s, e);
-                if (sn.length() > 200) sn = sn.substring(0, 200);
-                f.setSnippet(sn);
-                f.setStartOffset(idx);
-                f.setEndOffset(idx + w.length());
-                list.add(f);
-            }
-        }
-        return list;
-    }
 }

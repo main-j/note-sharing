@@ -2,53 +2,77 @@
   <div class="moderation-view">
     <div class="view-header">
       <h2 class="page-title">内容审查管理</h2>
-      <button class="refresh-btn" @click="loadModerations">刷新</button>
+      <div class="header-actions-group">
+        <div class="tab-switcher">
+          <button 
+            :class="['tab-btn', { active: activeTab === 'records' }]"
+            @click="activeTab = 'records'"
+          >
+            审查记录
+          </button>
+          <button 
+            :class="['tab-btn', { active: activeTab === 'notes' }]"
+            @click="activeTab = 'notes'"
+          >
+            待审核笔记
+          </button>
+        </div>
+        <button class="refresh-btn" @click="handleRefresh">刷新</button>
+      </div>
     </div>
 
-    <div class="table-container">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>审查ID</th>
-            <th>内容类型</th>
-            <th>内容ID</th>
-            <th>触发原因</th>
-            <th>状态</th>
-            <th>创建时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="7" class="loading-cell">加载中...</td>
-          </tr>
-          <tr v-else-if="moderations.length === 0">
-            <td colspan="7" class="empty-cell">暂无待审查内容</td>
-          </tr>
-          <tr v-else v-for="mod in moderations" :key="mod.id">
-            <td>{{ mod.id }}</td>
-            <td>{{ mod.contentType || mod.type || '-' }}</td>
-            <td>{{ mod.contentId || mod.targetId || '-' }}</td>
-            <td class="reason-cell">{{ mod.reason || '-' }}</td>
-            <td>
-              <span :class="['status-badge', getStatusClass(mod.status)]">
-                {{ getStatusText(mod.status) }}
-              </span>
-            </td>
-            <td>{{ formatTime(mod.createdAt || mod.createTime) }}</td>
-            <td>
-              <button class="action-btn" @click="viewDetail(mod)">查看详情</button>
-              <button
-                v-if="mod.status === 'PENDING'"
-                class="action-btn handle-btn"
-                @click="handleModeration(mod)"
-              >
-                处理
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- 审查记录标签页 -->
+    <div v-if="activeTab === 'records'" class="tab-content">
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>审查ID</th>
+              <th>内容类型</th>
+              <th>内容ID</th>
+              <th>触发原因</th>
+              <th>状态</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading">
+              <td colspan="7" class="loading-cell">加载中...</td>
+            </tr>
+            <tr v-else-if="moderations.length === 0">
+              <td colspan="7" class="empty-cell">暂无待审查内容</td>
+            </tr>
+            <tr v-else v-for="mod in moderations" :key="mod.id">
+              <td>{{ mod.id }}</td>
+              <td>{{ mod.contentType || mod.type || '-' }}</td>
+              <td>{{ mod.contentId || mod.targetId || '-' }}</td>
+              <td class="reason-cell">{{ mod.reason || '-' }}</td>
+              <td>
+                <span :class="['status-badge', getStatusClass(mod.status)]">
+                  {{ getStatusText(mod.status) }}
+                </span>
+              </td>
+              <td>{{ formatTime(mod.createdAt || mod.createTime) }}</td>
+              <td>
+                <button class="action-btn" @click="viewDetail(mod)">查看详情</button>
+                <button
+                  v-if="mod.status === 'PENDING'"
+                  class="action-btn handle-btn"
+                  @click="handleModeration(mod)"
+                >
+                  处理
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 待审核笔记标签页 -->
+    <div v-if="activeTab === 'notes'" class="tab-content">
+      <PendingNotesView />
     </div>
 
     <!-- 详情/处理对话框 -->
@@ -98,14 +122,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { getPendingModerations, handleModeration as handleModerationApi } from '../../api/admin'
+import PendingNotesView from './PendingNotesView.vue'
 
+const activeTab = ref('records')
 const moderations = ref([])
 const loading = ref(false)
 const showDialog = ref(false)
 const currentModeration = ref(null)
 const adminNote = ref('')
+
+const handleRefresh = () => {
+  if (activeTab.value === 'records') {
+    loadModerations()
+  }
+  // 待审核笔记的刷新由 PendingNotesView 组件自己处理
+}
 
 const loadModerations = async () => {
   loading.value = true
@@ -161,7 +194,11 @@ const submitHandle = async () => {
   if (!currentModeration.value) return
   
   try {
-    await handleModerationApi(currentModeration.value.id, adminNote.value)
+    await handleModerationApi(
+      currentModeration.value.id, 
+      adminNote.value || '已处理',
+      true
+    )
     alert('处理成功')
     closeDialog()
     loadModerations()
@@ -206,6 +243,47 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.header-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tab-switcher {
+  display: flex;
+  gap: 8px;
+  background: #f5f5f5;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.tab-btn {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: #333;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.tab-btn.active {
+  background: white;
+  color: #007FFF;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.tab-content {
+  margin-top: 20px;
 }
 
 .page-title {

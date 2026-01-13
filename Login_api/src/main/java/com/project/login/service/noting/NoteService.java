@@ -357,6 +357,26 @@ public class NoteService {
                 String url = minioservice.getFileUrl(noteDO.getFilename());
                 vo.setUrl(url);
             }
+            // 获取作者信息（用户名和邮箱）
+            try {
+                Long bookId = noteMapper.selectNotebookIdByNoteId(noteDO.getId());
+                if (bookId != null) {
+                    Long spaceId = notebookMapper.selectSpaceIdByNotebookId(bookId);
+                    if (spaceId != null) {
+                        Long userId = notespaceMapper.selectUserIdBySpaceId(spaceId);
+                        if (userId != null) {
+                            UserDO user = userMapper.selectById(userId);
+                            if (user != null) {
+                                vo.setAuthorName(user.getUsername());
+                                vo.setAuthorEmail(user.getEmail());
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // 如果获取作者信息失败，记录日志但不影响主流程
+                log.warn("获取笔记{}的作者信息失败", noteDO.getId(), e);
+            }
             voList.add(vo);
         }
         return voList;

@@ -92,23 +92,30 @@
 
       <div v-else-if="currentNoteType === 'md'" class="editor-container">
         <header class="editor-header">
-          <input
+            <input
               v-model="currentTitle"
               class="title-input"
               placeholder="无标题笔记"
+              :disabled="isNoteUnderModerationRef"
               @blur="updateCurrentNoteTitle"
-          />
+            />
           <div class="header-actions">
             <span class="save-status">☁️ 已保存</span>
-            <button class="save-btn" @click="saveNoteContent">保存</button>
-            <button class="publish-btn" @click="handlePublishNote" :disabled="!currentNote">发布</button>
+            <button class="save-btn" @click="saveNoteContent" :disabled="isNoteUnderModerationRef">保存</button>
+            <button class="publish-btn" @click="handlePublishNote" :disabled="!currentNote || isNoteUnderModerationRef">发布</button>
+            <span v-if="isNoteUnderModerationRef" class="moderation-status">⏳ 审核中</span>
           </div>
         </header>
 
         <div v-if="!editor" class="loading-state">编辑器加载中...</div>
 
-        <div v-else class="tiptap-wrapper">
-          <div class="tiptap-toolbar">
+        <div v-else class="tiptap-wrapper" style="position: relative;">
+          <div v-if="isNoteUnderModerationRef" class="moderation-overlay">
+            <div class="moderation-message">
+              <span>⏳ 笔记正在审核中，无法编辑</span>
+            </div>
+          </div>
+          <div class="tiptap-toolbar" :class="{ 'disabled-toolbar': isNoteUnderModerationRef }">
             <div class="toolbar-group">
               <button @click="editor.chain().focus().undo().run()" :disabled="!editor.can().undo()" title="撤销">
                 <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88c3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
@@ -257,6 +264,23 @@
       </div>
     </div>
 
+    <!-- 审核确认对话框 -->
+    <div v-if="showModerationDialog" class="modal-overlay" @click.self="cancelModeration">
+      <div class="rename-dialog">
+        <h4 class="modal-title">需要审核</h4>
+        <p class="delete-message">
+          您的笔记内容需要管理员审核。审核期间，笔记将无法修改，也无法被其他用户搜索到。
+        </p>
+        <p class="delete-message" style="margin-top: 10px;">
+          是否确认提交审核？
+        </p>
+        <div class="modal-actions">
+          <button class="modal-cancel-btn" @click="cancelModeration">取消上传</button>
+          <button class="modal-confirm-btn" @click="confirmModeration">确认审核</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="moveToDialog.visible" class="modal-overlay" @click.self="cancelMoveTo">
       <div class="rename-dialog"> <h4 class="modal-title">移动笔记</h4>
         <p class="delete-message">
@@ -323,6 +347,63 @@
         @change="handleFileUpload"
     />
 
+    <!-- 敏感词检测对话框 -->
+    <div v-if="checkDialogVisible" class="modal-overlay check-dialog-overlay">
+      <div class="check-dialog">
+        <div class="check-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h4 class="check-title">您的笔记正在检测</h4>
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: checkProgress + '%' }"></div>
+          </div>
+          <span class="progress-text">{{ checkProgress }}%</span>
+        </div>
+        <p class="check-tip">正在检测内容安全性，请稍候...</p>
+      </div>
+    </div>
+
+    <!-- 风险等级结果对话框 -->
+    <div v-if="riskResultDialog.visible" class="modal-overlay" @click.self="closeRiskResultDialog">
+      <div class="risk-result-dialog">
+        <div class="risk-icon" :class="`risk-${riskResultDialog.level.toLowerCase()}`">
+          <svg v-if="riskResultDialog.level === 'LOW'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <svg v-else-if="riskResultDialog.level === 'MEDIUM'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 16v-4M12 8h.01" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="10"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="risk-content">
+          <h4 class="risk-title">{{ riskResultDialog.title }}</h4>
+          <p class="risk-message">{{ riskResultDialog.message }}</p>
+          <div class="risk-details">
+            <div class="risk-item">
+              <span class="risk-label">风险等级：</span>
+              <span class="risk-value" :class="`risk-value-${riskResultDialog.level.toLowerCase()}`">
+                {{ riskResultDialog.level }}
+              </span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-label">风险评分：</span>
+              <span class="risk-value">{{ riskResultDialog.score }}分</span>
+            </div>
+          </div>
+        </div>
+        <div class="risk-actions">
+          <button class="risk-confirm-btn" @click="closeRiskResultDialog">确定</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 消息提示组件 -->
     <MessageToast
       v-if="showToast"
@@ -363,7 +444,8 @@ import {
   moveNote,
   uploadImage,
   getFileUrl,
-  publishNote
+  publishNote,
+  checkSensitiveText
 } from '@/api/note'; // 确保路径正确
 
 import MessageToast from '@/components/MessageToast.vue'
@@ -395,6 +477,29 @@ const fileInput = ref(null);
 const uploadFileInput = ref(null);
 const isLoading = ref(false);
 const renameInputRef = ref(null);
+
+// 敏感词检测相关状态
+const isCheckingSensitive = ref(false);
+const checkProgress = ref(0);
+const checkDialogVisible = ref(false);
+
+// 审核确认对话框状态
+const showModerationDialog = ref(false);
+const moderationMeta = ref(null);
+const moderationFile = ref(null);
+const moderationCheckResult = ref(null);
+
+// 笔记是否在审核中
+const isNoteUnderModerationRef = ref(false);
+
+// 风险等级结果对话框状态
+const riskResultDialog = ref({
+  visible: false,
+  level: 'LOW', // LOW, MEDIUM, HIGH
+  score: 0,
+  title: '',
+  message: ''
+});
 
 // 消息提示
 const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, showInfo, hideMessage } = useMessage()
@@ -578,6 +683,14 @@ const editor = useEditor({
   onUpdate: ({ editor }) => {
     // 【API调用点 A】: 内容变化时自动保存
     if (currentNote.value && currentNoteType.value === 'md') {
+      // 如果笔记在审核中，阻止编辑
+      if (isNoteUnderModerationRef.value) {
+        // 恢复内容
+        const htmlContent = mdParser.render(currentNote.value.content || '');
+        editor.commands.setContent(htmlContent, false);
+        showError('笔记正在审核中，无法修改');
+        return;
+      }
 
       const htmlContent = editor.getHTML();
       const markdownContent = turndownService.turndown(htmlContent);
@@ -607,6 +720,12 @@ const editor = useEditor({
 const saveNoteContent = async () => {
   // 保持检查不变，但确保逻辑严谨性
   if (!currentNote.value || currentNoteType.value !== 'md' || !editor.value) return;
+
+  // 检查笔记是否在审核中
+  if (await isNoteUnderModeration(currentNote.value.id)) {
+    showError('笔记正在审核中，无法修改');
+    return;
+  }
 
   try {
     // 1. 获取 HTML 内容
@@ -654,7 +773,39 @@ const saveNoteContent = async () => {
 };
 
 /**
- * 发布笔记
+ * 模拟检测进度更新（与实际检测同步）
+ */
+const simulateCheckProgress = (checkPromise) => {
+  return new Promise((resolve) => {
+    checkProgress.value = 0;
+    let currentProgress = 0;
+    
+    // 模拟进度更新
+    const interval = setInterval(() => {
+      currentProgress += Math.random() * 15 + 5; // 每次增加5-20%
+      if (currentProgress >= 90) {
+        currentProgress = 90;
+        clearInterval(interval);
+      } else {
+        checkProgress.value = Math.floor(currentProgress);
+      }
+    }, 150);
+    
+    // 等待实际检测完成
+    checkPromise.then(() => {
+      clearInterval(interval);
+      checkProgress.value = 100;
+      setTimeout(resolve, 300);
+    }).catch(() => {
+      clearInterval(interval);
+      checkProgress.value = 100;
+      setTimeout(resolve, 300);
+    });
+  });
+};
+
+/**
+ * 发布笔记（带敏感词检测）
  */
 const handlePublishNote = async () => {
   if (!currentNote.value) {
@@ -669,20 +820,28 @@ const handlePublishNote = async () => {
 
   try {
     isLoading.value = true;
+    isCheckingSensitive.value = true;
+    checkDialogVisible.value = true;
+    checkProgress.value = 0;
 
     // 根据笔记类型处理内容
     let file = null;
     let meta = {};
+    let textContent = '';
 
     if (currentNoteType.value === 'md') {
       // 富文本笔记：获取HTML内容并转换为Markdown
       if (!editor.value) {
         showError('编辑器未初始化，无法发布。');
+        isCheckingSensitive.value = false;
+        checkDialogVisible.value = false;
+        isLoading.value = false;
         return;
       }
 
       const htmlContent = editor.value.getHTML();
       const markdownContent = turndownService.turndown(htmlContent);
+      textContent = markdownContent;
 
       // 构造 File 对象
       const blob = new Blob([markdownContent], { type: 'text/markdown' });
@@ -699,28 +858,85 @@ const handlePublishNote = async () => {
     } else {
       // PDF或其他文件类型：需要获取文件
       showError('文件类型笔记的发布功能需要先上传文件，请使用更新功能。');
+      isCheckingSensitive.value = false;
+      checkDialogVisible.value = false;
       isLoading.value = false;
       return;
     }
 
-    // 调用发布API
-    const publishedVo = await publishNote(meta, file);
+    // 调用敏感词检测API
+    let checkResult = null;
+    let checkPromise;
+    try {
+      // 组合标题和内容进行检测
+      const checkText = `${meta.title}\n${textContent}`;
+      checkPromise = checkSensitiveText(checkText);
+      checkResult = await checkPromise;
+    } catch (error) {
+      console.error('敏感词检测失败:', error);
+      // 检测失败时，视为高风险，阻止发布
+      checkResult = { riskLevel: 'HIGH', status: 'FLAGGED', score: 100 };
+      checkPromise = Promise.resolve(checkResult);
+    }
 
-    if (publishedVo) {
-      // 更新本地笔记信息
-      if (publishedVo.updatedAt) {
-        currentNote.value.updatedAt = publishedVo.updatedAt;
-      }
-      // 同步更新 noteList 中对应笔记的信息
-      const noteInList = noteList.value.find(n => n.id === publishedVo.id);
-      if (noteInList) {
-        Object.assign(noteInList, publishedVo);
-      }
+    // 同步进度条与实际检测
+    await simulateCheckProgress(checkPromise);
 
-      showSuccess('笔记发布成功！');
+    // 关闭检测对话框
+    isCheckingSensitive.value = false;
+    checkDialogVisible.value = false;
+
+    // 根据风险等级处理
+    const riskLevel = checkResult?.riskLevel?.toUpperCase() || 'LOW';
+    const status = checkResult?.status?.toUpperCase() || 'SAFE';
+    const score = checkResult?.score || 0;
+    
+    // 根据风险等级处理
+    if (riskLevel === 'LOW') {
+      // LOW 风险：正常发布
+      try {
+        const publishedVo = await publishNote(meta, file);
+        
+        if (publishedVo) {
+          // 更新本地笔记信息
+          if (publishedVo.updatedAt) {
+            currentNote.value.updatedAt = publishedVo.updatedAt;
+          }
+          // 同步更新 noteList 中对应笔记的信息
+          const noteInList = noteList.value.find(n => n.id === publishedVo.id);
+          if (noteInList) {
+            Object.assign(noteInList, publishedVo);
+          }
+          
+          // 显示成功提示
+          isLoading.value = false;
+          showSuccess('笔记成功发布');
+        }
+      } catch (error) {
+        isLoading.value = false;
+        showError('发布笔记失败：' + (error.response?.data?.message || error.message || '请稍后重试。'));
+        console.error('Error publishing note:', error);
+      }
+    } else if (riskLevel === 'MEDIUM') {
+      // MEDIUM 风险：显示审核确认对话框
+      isLoading.value = false;
+      
+      // 保存meta和file到临时变量，供确认审核时使用
+      moderationMeta.value = meta;
+      moderationFile.value = file;
+      moderationCheckResult.value = checkResult;
+      
+      // 显示审核确认对话框
+      showModerationDialog.value = true;
+    } else {
+      // HIGH 风险：不发布，显示退回提示
+      isLoading.value = false;
+      showError('笔记发布违规被退回');
     }
 
   } catch (error) {
+    isCheckingSensitive.value = false;
+    checkDialogVisible.value = false;
     showError('发布笔记失败：' + (error.response?.data?.message || error.message || '请稍后重试。'));
     console.error('Error publishing note:', error);
   } finally {
@@ -974,6 +1190,9 @@ const selectNote = async (note) => {
   currentTitle.value = note.title;
   currentNoteType.value = note.fileType;
   pdfPreviewUrl.value = null;
+  
+  // 检查笔记是否在审核中
+  isNoteUnderModerationRef.value = await isNoteUnderModeration(note.id);
   
   // 通知父组件当前选中的笔记ID
   emit('note-selected', note.id);
@@ -1451,6 +1670,107 @@ const changeHeading = (event) => {
 
 const toggleInsertMenu = () => showInsertMenu.value = !showInsertMenu.value;
 
+/**
+ * 显示风险等级结果对话框
+ */
+const showRiskResultDialog = (options) => {
+  riskResultDialog.value = {
+    visible: true,
+    level: options.level || 'LOW',
+    score: options.score || 0,
+    title: options.title || '检测结果',
+    message: options.message || ''
+  };
+};
+
+/**
+ * 关闭风险等级结果对话框
+ */
+const closeRiskResultDialog = () => {
+  riskResultDialog.value.visible = false;
+  // 根据风险等级显示对应的提示消息
+  const level = riskResultDialog.value.level;
+  if (level === 'LOW') {
+    showSuccess('笔记发布成功！');
+  } else if (level === 'MEDIUM') {
+    showInfo('笔记已发布，已提交管理员审查。');
+  }
+};
+
+/**
+ * 确认提交审核
+ */
+const confirmModeration = async () => {
+  if (!moderationMeta.value || !moderationFile.value || !moderationCheckResult.value) {
+    showError('审核信息不完整，无法提交');
+    showModerationDialog.value = false;
+    return;
+  }
+
+  try {
+    isLoading.value = true;
+    
+    // 先保存笔记（不发布）
+    const savedVo = await updateNote(moderationMeta.value, moderationFile.value);
+    if (savedVo) {
+      // 提交审查记录到管理员端
+      const { submitModeration } = await import('@/api/admin');
+      await submitModeration(savedVo.id, moderationCheckResult.value);
+      
+      // 更新本地笔记信息
+      if (savedVo.updatedAt) {
+        currentNote.value.updatedAt = savedVo.updatedAt;
+      }
+      // 同步更新 noteList 中对应笔记的信息
+      const noteInList = noteList.value.find(n => n.id === savedVo.id);
+      if (noteInList) {
+        Object.assign(noteInList, savedVo);
+      }
+      
+      showModerationDialog.value = false;
+      isLoading.value = false;
+      showSuccess('笔记已提交审核，审核期间无法修改');
+    }
+  } catch (error) {
+    console.error('提交审核失败:', error);
+    isLoading.value = false;
+    showError('提交审核失败：' + (error.response?.data?.message || error.message || '请稍后重试。'));
+  } finally {
+    // 清理临时变量
+    moderationMeta.value = null;
+    moderationFile.value = null;
+    moderationCheckResult.value = null;
+  }
+};
+
+/**
+ * 取消审核，取消上传
+ */
+const cancelModeration = () => {
+  showModerationDialog.value = false;
+  // 清理临时变量
+  moderationMeta.value = null;
+  moderationFile.value = null;
+  moderationCheckResult.value = null;
+  showInfo('已取消上传');
+};
+
+/**
+ * 检查笔记是否在审核中
+ */
+const isNoteUnderModeration = async (noteId) => {
+  if (!noteId) return false;
+  try {
+    const { getNoteModerationHistory } = await import('@/api/admin');
+    const moderationList = await getNoteModerationHistory(noteId);
+    // 如果存在未处理的审核记录，说明笔记在审核中
+    return moderationList && moderationList.some(m => !m.isHandled);
+  } catch (error) {
+    console.error('检查审核状态失败:', error);
+    return false; // 出错时返回false，允许编辑
+  }
+};
+
 </script>
 
 <style scoped>
@@ -1797,6 +2117,47 @@ const toggleInsertMenu = () => showInsertMenu.value = !showInsertMenu.value;
   background: #9ca3af;
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.moderation-status {
+  font-size: 13px;
+  color: #f59e0b;
+  margin-left: 10px;
+  font-weight: 500;
+}
+
+.title-input:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+  color: #6b7280;
+}
+
+.moderation-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.moderation-message {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 20px 30px;
+  font-size: 16px;
+  color: #856404;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.disabled-toolbar {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* --- TipTap 工具栏 --- */
@@ -2281,5 +2642,198 @@ const toggleInsertMenu = () => showInsertMenu.value = !showInsertMenu.value;
   line-height: 1.5;
   margin-bottom: 25px;
   color: #333;
+}
+
+.check-dialog-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.check-dialog {
+  background: white;
+  padding: 40px 50px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  min-width: 400px;
+  text-align: center;
+}
+
+.check-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 20px;
+  color: #4c7cff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.check-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.check-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4c7cff, #3a68e0);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 14px;
+  color: #666;
+  min-width: 45px;
+  text-align: right;
+}
+
+.check-tip {
+  margin-top: 16px;
+  font-size: 13px;
+  color: #999;
+  text-align: center;
+}
+
+/* ================================================= */
+/* ============= 风险等级结果对话框样式 ============= */
+/* ================================================= */
+.risk-result-dialog {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 500px;
+}
+
+.risk-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.risk-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.risk-low {
+  background: #e6f7e6;
+  color: #52c41a;
+}
+
+.risk-medium {
+  background: #fff7e6;
+  color: #faad14;
+}
+
+.risk-high {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
+.risk-content {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.risk-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.risk-message {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.risk-details {
+  background: #f7f7f7;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+}
+
+.risk-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.risk-item:not(:last-child) {
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.risk-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.risk-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.risk-value-low {
+  color: #52c41a;
+}
+
+.risk-value-medium {
+  color: #faad14;
+}
+
+.risk-value-high {
+  color: #ff4d4f;
+}
+
+.risk-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.risk-confirm-btn {
+  padding: 10px 30px;
+  background: #4c7cff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background-color 0.2s;
+}
+
+.risk-confirm-btn:hover {
+  background: #3a68e0;
 }
 </style>

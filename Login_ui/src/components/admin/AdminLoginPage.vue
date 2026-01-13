@@ -35,12 +35,14 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { adminLogin } from "../../api/admin";
 import MessageToast from "../MessageToast.vue";
+import { useUserStore } from "@/stores/user";
 
 // 输入框数据
 const email = ref("");
 const password = ref("");
 
 const router = useRouter();
+const userStore = useUserStore();
 
 // 消息提示相关
 const showToast = ref(false);
@@ -71,6 +73,12 @@ const login = async () => {
     // 保存 token
     if (res.token) {
       localStorage.setItem("token", res.token);
+      
+      // 设置登录入口类型为管理员
+      userStore.setLoginType('admin');
+      // 解码并设置 token 中的用户信息
+      userStore.decodeAndSetToken(res.token, 'admin');
+      
       // 显示成功消息并自动跳转
       showMessage("登录成功！", "success", "/admin/main");
     } else {

@@ -45,7 +45,7 @@ public class FastFilterService {
 
             // 2. 兜底加载内部文件
             if (loadedWords.isEmpty()) {
-                for (String fn : new String[]{"politics.txt", "sex.txt"}) {
+                for (String fn : new String[]{"politics.txt", "sex.txt", "rudewords.txt"}) {
                     ClassPathResource res = new ClassPathResource(fn);
                     if (res.exists()) {
                         try (InputStream is = res.getInputStream();
@@ -162,8 +162,16 @@ public class FastFilterService {
     private String parseLine(String line) {
         if (line == null) return "";
         String s = line.trim();
-        int idx = s.indexOf('→');
-        if (idx >= 0) s = s.substring(idx + 1);
+        // 处理逗号分隔的情况（如 sex.txt, politics.txt）
+        int commaIdx = s.indexOf(',');
+        if (commaIdx >= 0) {
+            s = s.substring(0, commaIdx);
+        }
+        // 处理箭头符号（如某些词库格式）
+        int arrowIdx = s.indexOf('→');
+        if (arrowIdx >= 0) {
+            s = s.substring(arrowIdx + 1);
+        }
         return s.trim();
     }
 

@@ -46,6 +46,7 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import api from "../api/request";
 import MessageToast from "./MessageToast.vue";
+import { useUserStore } from "@/stores/user";
 
 // 输入框数据
 const email = ref("");
@@ -54,6 +55,7 @@ const username = ref("");
 const password = ref("");
 
 const router = useRouter();
+const userStore = useUserStore();
 
 // 消息提示相关
 const showToast = ref(false);
@@ -88,6 +90,11 @@ const login = async () => {
 
     // 假设后端返回 token：{ token: "xxxx" }
     localStorage.setItem("token", res.data.token);
+    
+    // 设置登录入口类型为普通用户
+    userStore.setLoginType('user');
+    // 解码并设置 token 中的用户信息
+    userStore.decodeAndSetToken(res.data.token, 'user');
 
     // 显示成功消息并自动跳转
     showMessage("登录成功！", "success", "/main");

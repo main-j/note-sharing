@@ -281,3 +281,14 @@ export const getFavoriteNotes = (userId) => {
         params: { userId }
     }).then(res => res.data.data);
 };
+
+/**
+ * [对应后端: POST /api/v1/admin/sensitive/check/text]
+ * 检查纯文本敏感词
+ * @param {string} text - 待检查的文本内容
+ * @returns {Promise<Object>} 返回 SensitiveCheckResult，包含 riskLevel (LOW/MEDIUM/HIGH), status, score 等
+ */
+export const checkSensitiveText = (text) => {
+    return service.post('/admin/sensitive/check/text', { text })
+        .then(res => res.data.data);
+};

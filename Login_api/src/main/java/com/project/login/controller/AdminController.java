@@ -15,7 +15,11 @@ import com.project.login.service.sensitive.FastFilterService;
 import com.project.login.service.sensitive.ModerationService;
 import com.project.login.service.sensitive.SensitiveWordService;
 import com.project.login.model.request.moderation.HandleModerationRequest;
+import com.project.login.model.request.moderation.SubmitModerationRequest;
+import com.project.login.model.request.moderation.ReviewNoteRequest;
 import com.project.login.model.vo.NoteModerationVO;
+import com.project.login.model.vo.NoteReviewVO;
+import com.project.login.model.vo.PendingNoteVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -124,17 +128,17 @@ public class AdminController {
         return StandardResponse.success("检查完成", result);
     }
 
-    @Operation(summary = "检查笔记敏感词（快速模式，使用摘要）")
+    @Operation(summary = "检查笔记敏感词（全文模式）")
     @GetMapping("/sensitive/check/note/{noteId}")
     public StandardResponse<SensitiveCheckResult> checkNote(@PathVariable Long noteId) {
         SensitiveCheckResult result = sensitiveWordService.checkNote(noteId);
         return StandardResponse.success("检查完成", result);
     }
 
-    @Operation(summary = "检查笔记敏感词（全文模式）")
+    @Operation(summary = "检查笔记敏感词（全文模式，兼容旧接口）")
     @GetMapping("/sensitive/check/note/{noteId}/full")
     public StandardResponse<SensitiveCheckResult> checkNoteFull(@PathVariable Long noteId) {
-        SensitiveCheckResult result = sensitiveWordService.checkNote(noteId, true);
+        SensitiveCheckResult result = sensitiveWordService.checkNote(noteId);
         return StandardResponse.success("检查完成", result);
     }
 
@@ -226,6 +230,13 @@ public class AdminController {
         return StandardResponse.success("获取成功", moderations);
     }
 
+    @Operation(summary = "获取待审核的笔记列表")
+    @GetMapping("/moderation/pending-notes")
+    public StandardResponse<List<PendingNoteVO>> getPendingNotes() {
+        List<PendingNoteVO> notes = moderationService.getPendingNotes();
+        return StandardResponse.success("获取成功", notes);
+    }
+
     @Operation(summary = "获取审查记录详情")
     @GetMapping("/moderation/{id}")
     public StandardResponse<NoteModerationVO> getModerationById(@PathVariable Long id) {
@@ -241,6 +252,80 @@ public class AdminController {
     public StandardResponse<List<NoteModerationVO>> getModerationsByNoteId(@PathVariable Long noteId) {
         List<NoteModerationVO> moderations = moderationService.getByNoteId(noteId);
         return StandardResponse.success("获取成功", moderations);
+    }
+
+    @Operation(summary = "提交审查记录（标记笔记为审核中）")
+    @PostMapping("/moderation/submit")
+    public StandardResponse<Map<String, String>> submitModeration(
+            @RequestBody SubmitModerationRequest request) {
+        try {
+            // 构造 SensitiveCheckResult 对象
+            SensitiveCheckResult result = new SensitiveCheckResult();
+            result.setStatus(request.getStatus());
+            result.setRiskLevel(request.getRiskLevel());
+            result.setScore(request.getScore());
+            result.setCategories(request.getCategories());
+            
+            // 转换 findings
+            if (request.getFindings() != null) {
+                List<SensitiveCheckResult.Finding> findings = new ArrayList<>();
+                for (SubmitModerationRequest.Finding f : request.getFindings()) {
+                    SensitiveCheckResult.Finding finding = new SensitiveCheckResult.Finding();
+                    finding.setTerm(f.getTerm());
+                    finding.setCategory(f.getCategory());
+                    finding.setConfidence(f.getConfidence());
+                    finding.setSnippet(f.getSnippet());
+                    finding.setStartOffset(f.getStartOffset());
+                    finding.setEndOffset(f.getEndOffset());
+                    findings.add(finding);
+                }
+                result.setFindings(findings);
+            }
+            
+            // 设置笔记元信息
+            SensitiveCheckResult.NoteMeta noteMeta = new SensitiveCheckResult.NoteMeta();
+            noteMeta.setNoteId(request.getNoteId());
+            result.setNoteMeta(noteMeta);
+            
+            // 保存审查记录
+            moderationService.saveResult(result);
+            
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "审查记录已提交");
+            return StandardResponse.success("审查记录已提交", response);
+        } catch (Exception e) {
+            log.error("提交审查记录失败", e);
+            return StandardResponse.error("提交审查记录失败: " + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "审查笔记（调用深度检测）")
+    @GetMapping("/moderation/review/{noteId}")
+    public StandardResponse<NoteReviewVO> reviewNote(@PathVariable Long noteId) {
+        try {
+            NoteReviewVO reviewResult = moderationService.reviewNote(noteId);
+            return StandardResponse.success("审查完成", reviewResult);
+        } catch (RuntimeException e) {
+            return StandardResponse.error(e.getMessage());
+        }
+    }
+
+    @Operation(summary = "处理审查结果（通过/未通过，发布/退回，发送私信）")
+    @PostMapping("/moderation/review-result")
+    public StandardResponse<Map<String, String>> handleReviewResult(
+            @RequestBody ReviewNoteRequest request) {
+        try {
+            moderationService.handleReviewResult(
+                    request.getModerationId(),
+                    request.getApproved(),
+                    request.getAdminComment()
+            );
+            Map<String, String> result = new HashMap<>();
+            result.put("message", request.getApproved() ? "审查通过，笔记已发布" : "审查未通过，笔记已退回");
+            return StandardResponse.success("处理成功", result);
+        } catch (RuntimeException e) {
+            return StandardResponse.error(e.getMessage());
+        }
     }
 
     @Operation(summary = "处理审查记录（标记为已处理并添加备注）")

@@ -88,13 +88,6 @@
             :disabled="noteLoading"
             @click="handleCheckNote"
           >
-            {{ noteLoading && noteLoadingType === 'quick' ? '检查中...' : '快速检查' }}
-          </button>
-          <button 
-            class="primary-btn" 
-            :disabled="noteLoading"
-            @click="handleCheckNoteFull"
-          >
             {{ noteLoading && noteLoadingType === 'full' ? '检查中...' : '全文检查' }}
           </button>
           <button 
@@ -119,7 +112,10 @@
       <div v-if="noteCheckResult" class="result-section">
         <h3>检查结果：</h3>
         <div class="result-content">
-          <div v-if="noteCheckResult.hasSensitiveWords || noteCheckResult.status === 'FLAGGED' || noteCheckResult.findings?.length > 0" class="result-warning">
+          <div v-if="noteCheckResult.status === 'ERROR'" class="result-error">
+            ❌ {{ noteCheckResult.message || '检查失败' }}
+          </div>
+          <div v-else-if="noteCheckResult.hasSensitiveWords || noteCheckResult.status === 'FLAGGED' || noteCheckResult.findings?.length > 0" class="result-warning">
             ⚠️ 检测到敏感词
           </div>
           <div v-else-if="noteCheckResult.status === 'SAFE' || (!noteCheckResult.hasSensitiveWords && !noteCheckResult.findings?.length)" class="result-safe">
@@ -137,7 +133,7 @@
           <div v-if="noteCheckResult.riskLevel" class="risk-level">
             风险等级：<span :class="['risk-badge', `risk-${noteCheckResult.riskLevel.toLowerCase()}`]">{{ noteCheckResult.riskLevel }}</span>
           </div>
-          <div v-if="noteCheckResult.score !== undefined" class="score-info">
+          <div v-if="noteCheckResult.score !== undefined && noteCheckResult.score !== null" class="score-info">
             风险评分：{{ noteCheckResult.score.toFixed(2) }} / 100
           </div>
         </div>
@@ -516,57 +512,14 @@ const handleCheckNote = async () => {
   }
   
   noteLoading.value = true
-  noteLoadingType.value = 'quick'
-  noteCheckResult.value = null
-  noteContent.value = ''
-  
-  try {
-    // 并行获取检查结果和笔记内容
-    const [res, content] = await Promise.allSettled([
-      checkNoteSensitive(noteId.value),
-      fetchNoteContent(noteId.value)
-    ])
-    
-    // 处理检查结果
-    if (res.status === 'fulfilled') {
-      noteCheckResult.value = res.value?.data || res.value
-      console.log('笔记检查结果:', noteCheckResult.value)
-    } else {
-      throw res.reason
-    }
-    
-    // 处理笔记内容
-    if (content.status === 'fulfilled' && content.value) {
-      noteContent.value = content.value
-    } else if (content.status === 'rejected') {
-      console.warn('获取笔记内容失败，将无法显示高亮:', content.reason)
-      // 不阻止检查结果的显示，只是没有高亮
-    }
-  } catch (error) {
-    console.error('笔记检查失败:', error)
-    alert('检查失败：' + (error.response?.data?.message || error.message || '未知错误'))
-    noteCheckResult.value = null
-  } finally {
-    noteLoading.value = false
-    noteLoadingType.value = null
-  }
-}
-
-const handleCheckNoteFull = async () => {
-  if (!noteId.value) {
-    alert('请输入笔记ID')
-    return
-  }
-  
-  noteLoading.value = true
   noteLoadingType.value = 'full'
   noteCheckResult.value = null
   noteContent.value = ''
   
   try {
-    // 并行获取检查结果和笔记内容
+    // 并行获取检查结果和笔记内容（统一使用全文检查API）
     const [res, content] = await Promise.allSettled([
-      checkNoteSensitiveFull(noteId.value),
+      checkNoteSensitive(noteId.value), // 现在统一调用全文检查
       fetchNoteContent(noteId.value)
     ])
     
@@ -623,8 +576,33 @@ const handleCheckNoteDeep = async () => {
     console.log('笔记深度检查结果:', noteCheckResult.value)
   } catch (error) {
     console.error('笔记深度检查失败:', error)
-    alert('检查失败：' + (error.response?.data?.message || error.message || '未知错误'))
-    noteCheckResult.value = null
+    // 判断是否是笔记不存在的情况
+    // 后端可能返回 error.response.data.error 或 error.response.data.message
+    const errorData = error.response?.data || {}
+    const errorMessage = errorData.message || errorData.error || error.message || '未知错误'
+    const errorCode = error.response?.status
+    const responseCode = errorData.code
+    
+    // 检查错误信息中是否包含"不存在"或"笔记不存在"，或者HTTP状态码是400/404
+    const isNoteNotFound = errorMessage.includes('不存在') || 
+                          errorMessage.includes('笔记不存在') ||
+                          errorMessage.includes('无法获取笔记信息') ||
+                          errorCode === 400 ||
+                          errorCode === 404 ||
+                          responseCode === 400 ||
+                          responseCode === 404
+    
+    if (isNoteNotFound) {
+      // 笔记不存在时，设置错误状态的检查结果
+      noteCheckResult.value = {
+        status: 'ERROR',
+        message: '内容不存在'
+      }
+    } else {
+      // 其他错误，显示alert并清空结果
+      alert('检查失败：' + errorMessage)
+      noteCheckResult.value = null
+    }
     noteContent.value = ''
   } finally {
     noteLoading.value = false
@@ -829,6 +807,11 @@ const handleReloadDeepWords = async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.result-error {
+  color: #dc3545;
+  font-weight: 600;
 }
 
 .result-warning {
