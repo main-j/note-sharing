@@ -8,16 +8,6 @@
     </div>
 
     <div class="input-group">
-      <label>学号</label>
-      <input v-model="studentNumber" type="text" placeholder="输入学号" />
-    </div>
-
-    <div class="input-group">
-      <label>用户名</label>
-      <input v-model="username" type="text" placeholder="输入用户名" />
-    </div>
-
-    <div class="input-group">
       <label>密码</label>
       <input v-model="password" type="password" placeholder="输入密码" />
     </div>
@@ -50,8 +40,6 @@ import { useUserStore } from "@/stores/user";
 
 // 输入框数据
 const email = ref("");
-const studentNumber = ref("");
-const username = ref("");
 const password = ref("");
 
 const router = useRouter();
@@ -73,7 +61,7 @@ const showMessage = (message, type = "success", redirectTo = null) => {
 
 // 登录方法
 const login = async () => {
-  if (!email.value || !studentNumber.value || !username.value || !password.value) {
+  if (!email.value || !password.value) {
     showMessage("请填写完整信息！", "error");
     return;
   }
@@ -81,8 +69,6 @@ const login = async () => {
   try {
     const res = await api.post("/auth/login", {
       email: email.value,
-      studentNumber: studentNumber.value,
-      username: username.value,
       password: password.value
     });
 
