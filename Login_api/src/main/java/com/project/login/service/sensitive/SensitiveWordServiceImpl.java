@@ -212,8 +212,11 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
             originalRiskLevel = "LOW";
         }
         
+        // 保存原始风险等级，避免连续升级
+        String llmRiskLevel = originalRiskLevel;
+        
         // 规则1: 如果LLM返回LOW，hits+hitCount>=5升级为MEDIUM
-        if ("LOW".equals(originalRiskLevel) && hasFastFilterHit) {
+        if ("LOW".equals(llmRiskLevel) && hasFastFilterHit) {
             aggregate.setRiskLevel("MEDIUM");
             if (aggregate.getStatus() == null || "SAFE".equals(aggregate.getStatus())) {
                 aggregate.setStatus("FLAGGED");
@@ -222,10 +225,9 @@ public class SensitiveWordServiceImpl implements SensitiveWordService {
                 aggregate.setScore(50.0);
             }
             log.info("【全文检查】LLM返回LOW，快速过滤命中数{}>=5，升级为MEDIUM", hitCount);
-            originalRiskLevel = "MEDIUM"; // 更新originalRiskLevel以便后续规则判断
         }
-        // 规则2: 如果LLM返回MEDIUM，hits+hitCount>=5升级为HIGH
-        if ("MEDIUM".equals(originalRiskLevel) && hasFastFilterHit) {
+        // 规则2: 如果LLM返回MEDIUM，hits+hitCount>=5升级为HIGH（注意：这里检查的是LLM原始返回，不是升级后的值）
+        else if ("MEDIUM".equals(llmRiskLevel) && hasFastFilterHit) {
             aggregate.setRiskLevel("HIGH");
             aggregate.setStatus("FLAGGED");
             if (aggregate.getScore() == null || aggregate.getScore() < 70.0) {
