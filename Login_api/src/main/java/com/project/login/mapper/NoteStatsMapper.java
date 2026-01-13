@@ -39,24 +39,24 @@ public interface NoteStatsMapper {
     @Delete("DELETE FROM note_stats WHERE note_id = #{noteId}")
     int deleteById(@Param("noteId") Long noteId);
 
-    /** 增量更新（乐观锁） */
+    /** 增量更新（乐观锁），使用GREATEST防止负数 */
     @Update("UPDATE note_stats " +
-            "SET views = views + #{views}, " +
-            "likes = likes + #{likes}, " +
-            "favorites = favorites + #{favorites}, " +
-            "comments = comments + #{comments}, " +
+            "SET views = GREATEST(0, views + #{views}), " +
+            "likes = GREATEST(0, likes + #{likes}), " +
+            "favorites = GREATEST(0, favorites + #{favorites}), " +
+            "comments = GREATEST(0, comments + #{comments}), " +
             "last_activity_at = #{lastActivityAt}, " +
             "version = version + 1 " +
             "WHERE note_id = #{noteId} AND version = #{version}")
     int incrementByDeltas(NoteStatsDO noteStats);
 
-    /** 覆盖 totals（乐观锁） */
+    /** 覆盖 totals（乐观锁），使用GREATEST防止负数 */
     @Update("UPDATE note_stats " +
             "SET author_name=#{authorName}, " +
-            "views=#{views}, " +
-            "likes=#{likes}, " +
-            "favorites=#{favorites}, " +
-            "comments=#{comments}, " +
+            "views=GREATEST(0, #{views}), " +
+            "likes=GREATEST(0, #{likes}), " +
+            "favorites=GREATEST(0, #{favorites}), " +
+            "comments=GREATEST(0, #{comments}), " +
             "last_activity_at=#{lastActivityAt}, " +
             "version = version + 1 " +
             "WHERE note_id = #{noteId} AND version = #{version}")

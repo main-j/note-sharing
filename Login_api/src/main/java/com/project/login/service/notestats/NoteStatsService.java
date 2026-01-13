@@ -1,6 +1,5 @@
 package com.project.login.service.notestats;
 
-import com.project.login.mapper.NoteStatsCompensationMapper;
 import com.project.login.mapper.NoteStatsMapper;
 import com.project.login.model.dataobject.NoteStatsDO;
 import com.project.login.model.vo.NoteStatsVO;
@@ -23,7 +22,6 @@ public class NoteStatsService {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final NoteStatsMapper noteStatsMapper;
-    private final NoteStatsCompensationMapper compensationMapper;
     private final RabbitTemplate rabbitTemplate;
 
     private static final String REDIS_KEY_PREFIX = "note_stats:";
@@ -53,7 +51,14 @@ public class NoteStatsService {
         initRedisIfNeeded(noteId, ops, key);
 
         // === 原子增量 ===
-        ops.increment(key, field, delta);
+        Long newValue = ops.increment(key, field, delta);
+        
+        // 防止负数：如果操作后值小于0，则设置为0
+        if (newValue != null && newValue < 0) {
+            ops.put(key, field, "0");
+            newValue = 0L;
+        }
+        
         ops.put(key, "last_activity_at", LocalDateTime.now().toString());
 
         // 返回当前值
@@ -133,10 +138,11 @@ public class NoteStatsService {
         NoteStatsVO vo = new NoteStatsVO();
         vo.setNoteId(noteId);
         vo.setAuthorName(Objects.toString(map.get("authorName"), ""));
-        vo.setViews(parseLong(map.get("views")));
-        vo.setLikes(parseLong(map.get("likes")));
-        vo.setFavorites(parseLong(map.get("favorites")));
-        vo.setComments(parseLong(map.get("comments")));
+        // 确保返回值不为负数
+        vo.setViews(Math.max(0, parseLong(map.get("views"))));
+        vo.setLikes(Math.max(0, parseLong(map.get("likes"))));
+        vo.setFavorites(Math.max(0, parseLong(map.get("favorites"))));
+        vo.setComments(Math.max(0, parseLong(map.get("comments"))));
         return vo;
     }
 
@@ -176,10 +182,11 @@ public class NoteStatsService {
                 Map<String, Object> msg = new HashMap<>();
                 msg.put("note_id", noteId);
                 msg.put("authorName", map.getOrDefault("authorName", ""));
-                msg.put("views", parseLong(map.get("views")));
-                msg.put("likes", parseLong(map.get("likes")));
-                msg.put("favorites", parseLong(map.get("favorites")));
-                msg.put("comments", parseLong(map.get("comments")));
+                // 确保值不为负数
+                msg.put("views", Math.max(0, parseLong(map.get("views"))));
+                msg.put("likes", Math.max(0, parseLong(map.get("likes"))));
+                msg.put("favorites", Math.max(0, parseLong(map.get("favorites"))));
+                msg.put("comments", Math.max(0, parseLong(map.get("comments"))));
                 msg.put("last_activity_at", map.getOrDefault("last_activity_at",
                         LocalDateTime.now().toString()));
                 msg.put("version", map.getOrDefault("version", 0L));

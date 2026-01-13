@@ -281,6 +281,10 @@ const actionLoading = ref({
   likes: false,
   favorites: false
 })
+// 请求去重：记录正在进行的请求
+const pendingRequests = ref(new Set())
+// 防抖定时器
+const debounceTimers = ref({})
 const fileUrl = ref(null)
 const markdownContent = ref('')
 
@@ -400,29 +404,65 @@ const handleToggleStat = async (field) => {
   }
 
   const flagRef = field === 'likes' ? isLiked : isFavorited
-  if (actionLoading.value[field]) return
-
-  setActionLoading(field, true)
-  const delta = flagRef.value ? -1 : 1
-
-  try {
-    const updated = await changeNoteStat(noteDetail.value.noteId, userId, field, delta)
-    updateStatsFromResponse(updated)
-    flagRef.value = delta > 0
-    persistActionState(field, flagRef.value)
-    
-    // 通知父组件统计信息已更新
-    emit('stats-updated', {
-      noteId: noteDetail.value.noteId,
-      likes: stats.value.likes,
-      favorites: stats.value.favorites,
-      comments: stats.value.comments
-    })
-  } catch (err) {
-    console.error('更新笔记统计失败:', err)
-  } finally {
-    setActionLoading(field, false)
+  
+  // 防重复点击：如果正在加载或已有相同请求，直接返回
+  if (actionLoading.value[field]) {
+    console.log(`操作 ${field} 正在进行中，忽略重复点击`)
+    return
   }
+
+  // 创建请求唯一标识
+  const requestKey = `${field}_${noteDetail.value.noteId}_${userId}_${flagRef.value ? 'un' : ''}${field}`
+  
+  // 检查是否有相同的请求正在进行
+  if (pendingRequests.value.has(requestKey)) {
+    console.log(`操作 ${field} 的相同请求正在进行，忽略重复请求`)
+    return
+  }
+
+  // 清除之前的防抖定时器
+  if (debounceTimers.value[field]) {
+    clearTimeout(debounceTimers.value[field])
+  }
+
+  // 添加防抖：300ms内的重复点击会被忽略
+  debounceTimers.value[field] = setTimeout(async () => {
+    // 再次检查状态，防止状态在防抖期间发生变化
+    const currentFlagRef = field === 'likes' ? isLiked : isFavorited
+    const delta = currentFlagRef.value ? -1 : 1
+    
+    // 添加到进行中的请求集合
+    pendingRequests.value.add(requestKey)
+    setActionLoading(field, true)
+
+    try {
+      const updated = await changeNoteStat(noteDetail.value.noteId, userId, field, delta)
+      updateStatsFromResponse(updated)
+      
+      // 更新状态
+      const newState = delta > 0
+      flagRef.value = newState
+      persistActionState(field, newState)
+      
+      // 通知父组件统计信息已更新
+      emit('stats-updated', {
+        noteId: noteDetail.value.noteId,
+        likes: stats.value.likes,
+        favorites: stats.value.favorites,
+        comments: stats.value.comments
+      })
+    } catch (err) {
+      console.error('更新笔记统计失败:', err)
+      showError('操作失败，请稍后重试')
+      // 操作失败时，恢复状态
+      flagRef.value = !flagRef.value
+    } finally {
+      // 移除请求标识
+      pendingRequests.value.delete(requestKey)
+      setActionLoading(field, false)
+      delete debounceTimers.value[field]
+    }
+  }, 300) // 300ms防抖
 }
 
 // 获取笔记详情和统计信息
