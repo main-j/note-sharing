@@ -33,7 +33,16 @@
           <tr v-else v-for="user in onlineUsers" :key="user.id || user.userId">
             <td>{{ user.id || user.userId }}</td>
             <td>{{ user.username || '-' }}</td>
-            <td>{{ user.email || '-' }}</td>
+            <td>
+              <router-link 
+                v-if="user.email && user.studentNumber"
+                :to="`/admin/${user.studentNumber}/info?email=${encodeURIComponent(user.email)}&fromTab=online-users`"
+                class="email-link"
+              >
+                {{ user.email }}
+              </router-link>
+              <span v-else>{{ user.email || '-' }}</span>
+            </td>
             <td>{{ user.studentNumber || '-' }}</td>
             <td>{{ formatTime(user.loginTime) }}</td>
           </tr>
@@ -147,6 +156,17 @@ onUnmounted(() => {
 .refresh-btn:hover {
   background: #f5f5f5;
   border-color: #ccc;
+}
+
+.email-link {
+  color: #007FFF;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.email-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
 }
 
 .stats-bar {

@@ -6,6 +6,7 @@ import AuthView from '../views/AuthView.vue'
 import MainView from '../views/MainView.vue'
 import AdminAuthView from '../views/AdminAuthView.vue'
 import AdminMainView from '../views/AdminMainView.vue'
+import AdminUserInfoView from '../views/AdminUserInfoView.vue'
 import { useUserStore } from '@/stores/user' // 导入 Pinia Store
 
 const routes = [
@@ -16,7 +17,8 @@ const routes = [
   { path: '/main', name: 'Main', component: MainView, meta: { requiresAuth: true } },
   // 管理员路由
   { path: '/admin/login', name: 'AdminLogin', component: AdminAuthView },
-  { path: '/admin/main', name: 'AdminMain', component: AdminMainView, meta: { requiresAuth: true, requiresAdmin: true } }
+  { path: '/admin/main', name: 'AdminMain', component: AdminMainView, meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/admin/:studentNumber/info', name: 'AdminUserInfo', component: AdminUserInfoView, meta: { requiresAuth: true, requiresAdmin: true } }
 ]
 
 const router = createRouter({

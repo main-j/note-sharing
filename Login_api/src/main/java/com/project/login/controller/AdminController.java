@@ -21,11 +21,31 @@ import com.project.login.model.vo.NoteModerationVO;
 import com.project.login.model.vo.NoteReviewVO;
 import com.project.login.model.vo.PendingNoteVO;
 import com.project.login.model.vo.SubmitModerationResponseVO;
+import com.project.login.model.vo.UserInfoWithNotesAndFollowsVO;
+import com.project.login.model.vo.FollowUserVO;
 import com.project.login.model.dataobject.NoteModerationDO;
+import com.project.login.repository.UserRepository;
+import com.project.login.mapper.UserMapper;
+import com.project.login.mapper.NoteSpaceMapper;
+import com.project.login.mapper.NotebookMapper;
+import com.project.login.mapper.NoteMapper;
+import com.project.login.mapper.UserFollowMapper;
+import com.project.login.model.dataobject.NoteSpaceDO;
+import com.project.login.model.dataobject.NotebookDO;
+import com.project.login.model.dataobject.NoteDO;
+import com.project.login.model.dataobject.UserFollowDO;
+import com.project.login.model.dataobject.UserDO;
+import com.project.login.model.entity.NoteEntity;
+import com.project.login.repository.NoteRepository;
+import com.project.login.service.minio.MinioService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -33,6 +53,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Tag(name = "Admin", description = "管理员相关接口")
@@ -48,6 +69,14 @@ public class AdminController {
     private final FastFilterService fastFilterService;
     private final DeepFilterService deepFilterService;
     private final ModerationService moderationService;
+    private final UserRepository userRepository;
+    private final UserMapper userMapper;
+    private final NoteSpaceMapper noteSpaceMapper;
+    private final NotebookMapper notebookMapper;
+    private final NoteMapper noteMapper;
+    private final UserFollowMapper userFollowMapper;
+    private final NoteRepository noteRepository;
+    private final MinioService minioService;
 
     @Operation(summary = "获取当前所有在线用户")
     @GetMapping("/online-users")
@@ -74,6 +103,42 @@ public class AdminController {
         }
         
         return StandardResponse.success("获取成功", userList);
+    }
+
+    @Operation(summary = "获取所有用户列表（分页）")
+    @GetMapping("/users/all")
+    public StandardResponse<Map<String, Object>> getAllUsers(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "30") int size) {
+        // 创建分页请求，按ID降序排列
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "id"));
+        Page<UserEntity> userPage = userRepository.findAll(pageable);
+        
+        // 转换为返回格式
+        List<Map<String, Object>> userList = new ArrayList<>();
+        for (UserEntity user : userPage.getContent()) {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("id", user.getId());
+            userMap.put("username", user.getUsername());
+            userMap.put("email", user.getEmail());
+            userMap.put("studentNumber", user.getStudentNumber() != null ? user.getStudentNumber() : "");
+            userMap.put("role", user.getRole() != null ? user.getRole() : "User");
+            userMap.put("enabled", user.isEnabled());
+            userMap.put("avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "");
+            userMap.put("createdAt", user.getCreatedAt());
+            userMap.put("updatedAt", user.getUpdatedAt());
+            userList.add(userMap);
+        }
+        
+        // 构建分页响应
+        Map<String, Object> result = new HashMap<>();
+        result.put("users", userList);
+        result.put("total", userPage.getTotalElements());
+        result.put("page", page);
+        result.put("size", size);
+        result.put("totalPages", userPage.getTotalPages());
+        
+        return StandardResponse.success("获取成功", result);
     }
 
     @Operation(summary = "统计笔记总数")
@@ -354,6 +419,123 @@ public class AdminController {
             return StandardResponse.success("处理成功", result);
         } catch (RuntimeException e) {
             return StandardResponse.error(e.getMessage());
+        }
+    }
+
+    @Operation(summary = "根据邮箱获取用户的所有发布文章和关注列表")
+    @GetMapping("/user/by-email")
+    public StandardResponse<UserInfoWithNotesAndFollowsVO> getUserInfoByEmail(@RequestParam String email) {
+        try {
+            // 1. 根据邮箱查找用户
+            UserEntity userEntity = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("用户不存在"));
+            
+            Long userId = userEntity.getId();
+            
+            // 2. 获取用户的所有笔记空间
+            List<NoteSpaceDO> spaces = noteSpaceMapper.selectByUser(userId);
+            
+            // 3. 获取所有笔记本
+            List<Long> notebookIds = new ArrayList<>();
+            for (NoteSpaceDO space : spaces) {
+                List<NotebookDO> notebooks = notebookMapper.selectBySpaceId(space.getId());
+                for (NotebookDO notebook : notebooks) {
+                    notebookIds.add(notebook.getId());
+                }
+            }
+            
+            // 4. 获取所有笔记
+            List<NoteDO> allNotes = new ArrayList<>();
+            for (Long notebookId : notebookIds) {
+                List<NoteDO> notes = noteMapper.selectByNotebookId(notebookId);
+                allNotes.addAll(notes);
+            }
+            
+            // 5. 过滤出已发布的笔记（在note_stats中有记录，且在Elasticsearch中有记录）
+            List<NoteDO> publishedNotes = new ArrayList<>();
+            if (!allNotes.isEmpty()) {
+                // 查询note_stats表，获取已发布的笔记ID
+                List<Long> noteIds = allNotes.stream().map(NoteDO::getId).collect(Collectors.toList());
+                
+                // 查询Elasticsearch，获取已发布的笔记ID列表
+                List<Long> publishedNoteIds = new ArrayList<>();
+                try {
+                    Iterable<NoteEntity> esEntities = noteRepository.findAllById(noteIds);
+                    for (NoteEntity entity : esEntities) {
+                        if (entity != null && entity.getId() != null) {
+                            publishedNoteIds.add(entity.getId());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("查询ES中的笔记失败", e);
+                }
+                
+                // 过滤出已发布的笔记
+                publishedNotes = allNotes.stream()
+                        .filter(note -> publishedNoteIds.contains(note.getId()))
+                        .collect(Collectors.toList());
+            }
+            
+            // 6. 转换为NoteShowVO列表
+            List<NoteShowVO> noteShowVOList = new ArrayList<>();
+            for (NoteDO noteDO : publishedNotes) {
+                NoteShowVO vo = new NoteShowVO();
+                vo.setId(noteDO.getId());
+                vo.setTitle(noteDO.getTitle());
+                vo.setFileType(noteDO.getFileType());
+                vo.setNotebookId(noteDO.getNotebookId());
+                vo.setCreatedAt(noteDO.getCreatedAt());
+                vo.setUpdatedAt(noteDO.getUpdatedAt());
+                // 获取文件访问URL
+                if (noteDO.getFilename() != null && !noteDO.getFilename().isEmpty()) {
+                    String url = minioService.getFileUrl(noteDO.getFilename());
+                    vo.setUrl(url);
+                }
+                // 设置作者信息
+                vo.setAuthorName(userEntity.getUsername());
+                vo.setAuthorEmail(userEntity.getEmail());
+                noteShowVOList.add(vo);
+            }
+            
+            // 7. 获取关注列表
+            List<UserFollowDO> followings = userFollowMapper.selectFollowings(userId);
+            List<FollowUserVO> followUserVOList = new ArrayList<>();
+            for (UserFollowDO follow : followings) {
+                try {
+                    UserDO followee = userMapper.selectById(follow.getFolloweeId());
+                    if (followee != null) {
+                        FollowUserVO followVO = FollowUserVO.builder()
+                                .userId(followee.getId())
+                                .username(followee.getUsername())
+                                .email(followee.getEmail())
+                                .avatarUrl(followee.getAvatarUrl())
+                                .followTime(follow.getFollowTime())
+                                .build();
+                        followUserVOList.add(followVO);
+                    }
+                } catch (Exception e) {
+                    log.warn("获取被关注用户信息失败 followeeId={}", follow.getFolloweeId(), e);
+                }
+            }
+            
+            // 8. 构建响应对象
+            UserInfoWithNotesAndFollowsVO result = UserInfoWithNotesAndFollowsVO.builder()
+                    .userId(userEntity.getId())
+                    .username(userEntity.getUsername())
+                    .email(userEntity.getEmail())
+                    .studentNumber(userEntity.getStudentNumber())
+                    .avatarUrl(userEntity.getAvatarUrl())
+                    .publishedNotes(noteShowVOList)
+                    .followings(followUserVOList)
+                    .build();
+            
+            return StandardResponse.success("获取成功", result);
+        } catch (RuntimeException e) {
+            log.error("根据邮箱获取用户信息失败 email={}", email, e);
+            return StandardResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("根据邮箱获取用户信息失败 email={}", email, e);
+            return StandardResponse.error("获取用户信息失败: " + e.getMessage());
         }
     }
 }

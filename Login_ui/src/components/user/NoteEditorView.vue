@@ -1283,7 +1283,7 @@ const selectNote = async (note) => {
       editor.value.commands.setContent(htmlContent, false);
       nextTick(() => {
         safeEditorFocus(() => {
-          editor.value.commands.focus('end');
+        editor.value.commands.focus('end');
         });
       });
     }
@@ -1291,9 +1291,9 @@ const selectNote = async (note) => {
     console.error('Failed to load note content:', error);
     // 只有在当前选中的笔记确实是这个笔记时才显示错误
     if (currentNote.value && currentNote.value.id === note.id) {
-      showError('加载笔记内容失败，请检查文件链接。');
-      // 如果加载失败，清空编辑器/预览区
-      editor.value?.commands.setContent('', false);
+    showError('加载笔记内容失败，请检查文件链接。');
+    // 如果加载失败，清空编辑器/预览区
+    editor.value?.commands.setContent('', false);
     }
   } finally {
     // 清除加载状态
@@ -1823,7 +1823,7 @@ const confirmModeration = async () => {
       if (moderationData?.moderationId) {
         showSuccess(`笔记已提交审核（审查ID：${moderationData.moderationId}），审核期间无法修改`);
       } else {
-        showSuccess('笔记已提交审核，审核期间无法修改');
+      showSuccess('笔记已提交审核，审核期间无法修改');
       }
     }
   } catch (error) {

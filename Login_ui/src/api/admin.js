@@ -9,10 +9,26 @@ export const adminLogin = async (email, password) => {
   return res.data
 }
 
-// ========== 在线用户管理 ==========
+// ========== 用户管理 ==========
 // 获取所有在线用户
 export const getOnlineUsers = async () => {
   const res = await request.get('/admin/online-users')
+  return res.data
+}
+
+// 获取所有用户（分页）
+export const getAllUsers = async (page = 1, size = 30) => {
+  const res = await request.get('/admin/users/all', {
+    params: { page, size }
+  })
+  return res.data
+}
+
+// 根据邮箱获取用户信息（包含发布文章和关注列表）
+export const getUserInfoByEmail = async (email) => {
+  const res = await request.get('/admin/user/by-email', {
+    params: { email }
+  })
   return res.data
 }
 
