@@ -151,240 +151,23 @@
             <p>暂无评论，快来发表第一条评论吧~</p>
           </div>
           <div v-else class="comments-list">
-            <div
+            <CommentItem
               v-for="comment in comments"
               :key="comment._id"
-              class="comment-item"
-            >
-              <div class="comment-main">
-                <div class="comment-header">
-                  <div class="comment-author-info">
-                    <img 
-                      :src="'/assets/avatars/avatar.png'" 
-                      :alt="comment.username"
-                      class="comment-avatar"
-                    />
-                    <span class="comment-author">{{ comment.username || '匿名用户' }}</span>
-                  </div>
-                  <span class="comment-time">{{ formatTime(comment.createdAt) }}</span>
-                </div>
-                <div class="comment-content-wrapper">
-                  <p class="comment-content">
-                    <span v-if="comment.replyToUsername" class="reply-to">
-                      回复 @{{ comment.replyToUsername }}：
-                    </span>
-                    <span>{{ comment.content }}</span>
-                  </p>
-                </div>
-                <div class="comment-actions">
-                  <button
-                    class="comment-action-btn"
-                    :class="{ active: comment.LikedOrNot }"
-                    :disabled="commentActionLoading[comment._id]"
-                    @click="handleToggleLike(comment)"
-                  >
-                    <svg class="action-icon-small" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="m8 2.748-.717-.737C5.6.281 2.514.878 1.4 3.053c-.523 1.023-.641 2.5.314 4.385C2.972 9.59 5.614 12.368 8 14.25c2.386-1.882 5.028-4.659 6.286-6.813.955-1.886.838-3.362.314-4.385C13.486.878 10.4.28 8.717 2.01z"/>
-                    </svg>
-                    <span>{{ comment.likeCount || 0 }}</span>
-                  </button>
-                  <button
-                    v-if="userStore.isLoggedIn"
-                    class="comment-action-btn"
-                    @click="handleReply(comment)"
-                  >
-                    回复
-                  </button>
-                  <button
-                    v-if="userStore.isLoggedIn"
-                    class="comment-action-btn danger"
-                    :disabled="commentActionLoading[comment._id]"
-                    @click="handleDeleteComment(comment)"
-                  >
-                    删除
-                  </button>
-                </div>
-              </div>
-
-              <!-- 回复表单 -->
-              <div v-if="replyingTo === comment._id" class="reply-form">
-                <textarea
-                  v-model="replyContent"
-                  class="comment-input reply-input"
-                  :placeholder="`回复 @${comment.username}:`"
-                  rows="3"
-                  :disabled="commentSubmitting"
-                ></textarea>
-                <div class="reply-form-actions">
-                  <button
-                    class="comment-submit-btn small"
-                    :disabled="!replyContent.trim() || commentSubmitting"
-                    @click="handleSubmitReply(comment)"
-                  >
-                    {{ commentSubmitting ? '提交中...' : '回复' }}
-                  </button>
-                  <button
-                    class="comment-cancel-btn"
-                    @click="cancelReply"
-                  >
-                    取消
-                  </button>
-                </div>
-              </div>
-
-              <!-- 子评论（回复） -->
-              <div v-if="comment.replies && comment.replies.length > 0" class="comment-replies">
-                <div
-                  v-for="replyGroup in organizeReplies(comment.replies, comment._id)"
-                  :key="replyGroup.mainReply._id"
-                  class="reply-wrapper"
-                >
-                  <!-- 二级评论 -->
-                  <div class="comment-item reply-item">
-                    <div class="comment-main">
-                      <div class="comment-header">
-                        <div class="comment-author-info">
-                          <img 
-                            :src="'/assets/avatars/avatar.png'" 
-                            :alt="replyGroup.mainReply.username"
-                            class="comment-avatar"
-                          />
-                          <span class="comment-author">{{ replyGroup.mainReply.username || '匿名用户' }}</span>
-                        </div>
-                        <div class="comment-header-right">
-                          <span class="comment-time">{{ formatTime(replyGroup.mainReply.createdAt) }}</span>
-                        </div>
-                      </div>
-                      <div class="comment-content-wrapper">
-                        <p class="comment-content">
-                          <template v-if="replyGroup.mainReply.replyToUsername">
-                            <span v-if="replyGroup.mainReply.replyToUsername !== comment.username && findReplyTarget(replyGroup.mainReply, comment.replies, comment)" class="reply-to">
-                              回复 @{{ findReplyTarget(replyGroup.mainReply, comment.replies, comment) }}：回复 @{{ replyGroup.mainReply.replyToUsername }}：
-                            </span>
-                            <span v-else class="reply-to">
-                              回复 @{{ replyGroup.mainReply.replyToUsername }}：
-                            </span>
-                          </template>
-                          <span>{{ replyGroup.mainReply.content }}</span>
-                        </p>
-                      </div>
-                      <div class="comment-actions">
-                        <button
-                          class="comment-action-btn"
-                          :class="{ active: replyGroup.mainReply.LikedOrNot }"
-                          :disabled="commentActionLoading[replyGroup.mainReply._id]"
-                          @click="handleToggleLike(replyGroup.mainReply)"
-                        >
-                          <svg class="action-icon-small" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="m8 2.748-.717-.737C5.6.281 2.514.878 1.4 3.053c-.523 1.023-.641 2.5.314 4.385C2.972 9.59 5.614 12.368 8 14.25c2.386-1.882 5.028-4.659 6.286-6.813.955-1.886.838-3.362.314-4.385C13.486.878 10.4.28 8.717 2.01z"/>
-                          </svg>
-                          <span>{{ replyGroup.mainReply.likeCount || 0 }}</span>
-                        </button>
-                        <button
-                          v-if="userStore.isLoggedIn"
-                          class="comment-action-btn"
-                          @click="handleReplyToReply(comment, replyGroup.mainReply)"
-                        >
-                          回复
-                        </button>
-                        <button
-                          v-if="userStore.isLoggedIn"
-                          class="comment-action-btn danger"
-                          :disabled="commentActionLoading[replyGroup.mainReply._id]"
-                          @click="handleDeleteComment(replyGroup.mainReply)"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-
-                    <!-- 回复回复的表单 -->
-                    <div v-if="replyingTo === replyGroup.mainReply._id" class="reply-form">
-                      <textarea
-                        v-model="replyContent"
-                        class="comment-input reply-input"
-                        :placeholder="`回复 @${replyGroup.mainReply.username}:`"
-                        rows="3"
-                        :disabled="commentSubmitting"
-                      ></textarea>
-                      <div class="reply-form-actions">
-                        <button
-                          class="comment-submit-btn small"
-                          :disabled="!replyContent.trim() || commentSubmitting"
-                          @click="handleSubmitReply(comment, replyGroup.mainReply)"
-                        >
-                          {{ commentSubmitting ? '提交中...' : '回复' }}
-                        </button>
-                        <button
-                          class="comment-cancel-btn"
-                          @click="cancelReply"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 回复二级评论的评论（三级评论） -->
-                  <div v-if="replyGroup.nestedReplies && replyGroup.nestedReplies.length > 0" class="nested-replies">
-                    <div
-                      v-for="nestedReply in replyGroup.nestedReplies"
-                      :key="nestedReply._id"
-                      class="nested-reply-item"
-                    >
-                      <div class="comment-main">
-                        <div class="comment-header">
-                          <div class="comment-author-info">
-                            <div class="comment-level-badge nested">再回复</div>
-                            <img 
-                              :src="'/assets/avatars/avatar.png'" 
-                              :alt="nestedReply.username"
-                              class="comment-avatar"
-                            />
-                            <span class="comment-author">{{ nestedReply.username || '匿名用户' }}</span>
-                          </div>
-                          <div class="comment-header-right">
-                            <span class="comment-time">{{ formatTime(nestedReply.createdAt) }}</span>
-                          </div>
-                        </div>
-                        <div class="comment-content-wrapper">
-                          <p class="comment-content">
-                            <template v-if="nestedReply.replyToUsername">
-                              <span class="reply-to">
-                                回复 @{{ nestedReply.replyToUsername }}：
-                              </span>
-                            </template>
-                            <span>{{ nestedReply.content }}</span>
-                          </p>
-                        </div>
-                        <div class="comment-actions">
-                          <button
-                            class="comment-action-btn"
-                            :class="{ active: nestedReply.LikedOrNot }"
-                            :disabled="commentActionLoading[nestedReply._id]"
-                            @click="handleToggleLike(nestedReply)"
-                          >
-                            <svg class="action-icon-small" viewBox="0 0 16 16" fill="currentColor">
-                              <path d="m8 2.748-.717-.737C5.6.281 2.514.878 1.4 3.053c-.523 1.023-.641 2.5.314 4.385C2.972 9.59 5.614 12.368 8 14.25c2.386-1.882 5.028-4.659 6.286-6.813.955-1.886.838-3.362.314-4.385C13.486.878 10.4.28 8.717 2.01z"/>
-                            </svg>
-                            <span>{{ nestedReply.likeCount || 0 }}</span>
-                          </button>
-                          <button
-                            v-if="userStore.isLoggedIn"
-                            class="comment-action-btn danger"
-                            :disabled="commentActionLoading[nestedReply._id]"
-                            @click="handleDeleteComment(nestedReply)"
-                          >
-                            删除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            </div>
+              :comment="comment"
+              :depth="0"
+              :is-logged-in="userStore.isLoggedIn"
+              :replying-to-id="replyingTo"
+              :reply-content="replyContent"
+              :comment-submitting="commentSubmitting"
+              :comment-action-loading="commentActionLoading"
+              @toggle-like="handleToggleLike"
+              @start-reply="startReply"
+              @delete-comment="handleDeleteComment"
+              @update:replyContent="val => (replyContent = val)"
+              @submit-reply="submitReply"
+              @cancel-reply="cancelReply"
+            />
           </div>
         </div>
       </div>
@@ -445,6 +228,7 @@ import VuePdfEmbed from 'vue-pdf-embed'
 import MarkdownIt from 'markdown-it'
 import MessageToast from '@/components/MessageToast.vue'
 import FollowButton from '@/components/FollowButton.vue'
+import CommentItem from '@/components/user/CommentItem.vue'
 import { useMessage } from '@/utils/message'
 
 const router = useRouter()
@@ -505,11 +289,9 @@ const comments = ref([])
 const commentsLoading = ref(false)
 const newCommentContent = ref('')
 const commentSubmitting = ref(false)
-const replyingTo = ref(null)
+const replyingTo = ref(null)        // 当前正在回复的 comment._id
 const replyContent = ref('')
-const replyToParentId = ref(null) // 回复的父评论ID
-const replyToRemarkId = ref(null) // 回复的目标评论ID
-const replyToUsername = ref(null) // 回复的目标用户名
+const replyTarget = ref(null)       // 当前正在回复的整条评论对象
 const commentActionLoading = ref({})
 
 // 作者相关状态
@@ -928,68 +710,46 @@ const handleSubmitComment = async () => {
   }
 }
 
-// 回复评论
-const handleReply = (comment) => {
+// 开始回复某一条评论（任意层级）
+const startReply = (comment) => {
   replyingTo.value = comment._id
-  replyToParentId.value = comment.parentId || comment._id
-  replyToRemarkId.value = comment._id
-  replyToUsername.value = comment.username
+  replyTarget.value = comment
   replyContent.value = ''
 }
 
-// 回复子评论
-const handleReplyToReply = (parentComment, reply) => {
-  replyingTo.value = reply._id
-  replyToParentId.value = reply._id  // 回复二级评论时，parentId应该是二级评论的ID
-  replyToRemarkId.value = reply._id
-  replyToUsername.value = reply.username
-  replyContent.value = ''
-}
-
-// 提交回复
-const handleSubmitReply = async (parentComment, targetReply = null) => {
+// 提交回复：统一逻辑，父节点就是当前回复的这条评论
+const submitReply = async (targetComment) => {
   if (!replyContent.value.trim() || !noteDetail.value?.noteId) return
-  
+
   const userId = getCurrentUserId()
   const username = userStore.userInfo?.username || '匿名用户'
-  
   if (!userId) {
     console.warn('用户未登录，无法回复')
     return
   }
 
+  const target = targetComment || replyTarget.value
+  if (!target) return
+
   commentSubmitting.value = true
   try {
-    // 如果回复的是二级评论，使用二级评论的信息
-    const replyTarget = targetReply || parentComment
-    const finalReplyToUsername = replyToUsername.value || replyTarget.username
-    const finalReplyToRemarkId = replyToRemarkId.value || replyTarget._id
-    // 如果回复的是二级评论（targetReply存在），parentId应该是二级评论的ID；否则是主评论的ID
-    const finalParentId = targetReply ? targetReply._id : (replyToParentId.value || parentComment._id)
-    
     const remarkData = {
       noteId: noteDetail.value.noteId,
-      userId: userId,
-      username: username,
+      userId,
+      username,
       content: replyContent.value.trim(),
-      parentId: finalParentId,
+      parentId: target._id,           // 父评论就是目标评论
       isReply: true,
-      replyToRemarkId: finalReplyToRemarkId,
-      replyToUsername: finalReplyToUsername
+      replyToRemarkId: target._id,
+      replyToUsername: target.username
     }
-    
-    console.log('提交回复数据:', remarkData)
-    
+
     await insertRemark(remarkData)
     cancelReply()
-    
-    // 重新获取评论列表
     await fetchComments()
-    
-    // 更新评论数统计（创建回复时增加1）
+
     if (stats.value) {
       stats.value.comments = (stats.value.comments || 0) + 1
-      // 通知父组件评论数量已更新
       emit('stats-updated', {
         noteId: noteDetail.value.noteId,
         comments: stats.value.comments
@@ -1006,50 +766,8 @@ const handleSubmitReply = async (parentComment, targetReply = null) => {
 // 取消回复
 const cancelReply = () => {
   replyingTo.value = null
-  replyToParentId.value = null
-  replyToRemarkId.value = null
-  replyToUsername.value = null
+  replyTarget.value = null
   replyContent.value = ''
-}
-
-// 组织回复，将回复二级评论的评论和二级评论分组
-const organizeReplies = (replies, parentCommentId) => {
-  if (!replies || replies.length === 0) return []
-  
-  // 找出所有二级评论（parentId指向主评论）
-  const secondLevelReplies = replies.filter(reply => reply.parentId === parentCommentId)
-  
-  // 为每个二级评论找出它的回复（parentId指向该二级评论）
-  return secondLevelReplies.map(mainReply => {
-    const nestedReplies = replies.filter(reply => reply.parentId === mainReply._id)
-    return {
-      mainReply,
-      nestedReplies
-    }
-  })
-}
-
-// 查找被回复的回复回复的是谁（用于多级回复显示）
-// currentReply: 当前回复
-// replies: 所有回复列表
-// parentComment: 主评论
-const findReplyTarget = (currentReply, replies, parentComment) => {
-  if (!replies || !currentReply || !currentReply.replyToUsername) return null
-  
-  // 如果回复的是主评论，不需要显示多级
-  if (currentReply.replyToUsername === parentComment?.username) {
-    return null
-  }
-  
-  // 找到被回复的那个回复（通过用户名匹配）
-  const targetReply = replies.find(r => r.username === currentReply.replyToUsername)
-  
-  // 如果找到了，返回它回复的是谁
-  if (targetReply && targetReply.replyToUsername) {
-    return targetReply.replyToUsername
-  }
-  
-  return null
 }
 
 // 点赞/取消点赞
@@ -1146,7 +864,7 @@ onMounted(() => {
 
 <style scoped>
 :global(:root) {
-  --brand-primary: #007FFF;
+  --brand-primary: #22bfa3;
   --surface-base: #ffffff;
   --surface-muted: #f6f6f6;
   --line-soft: #e2e2e2;

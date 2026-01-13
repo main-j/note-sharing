@@ -119,6 +119,60 @@ public class RemarkService {
         return cur;
     }
 
+    /**
+     * 递归构建评论回复树（支持无限层级）
+     * @param parentId 父评论ID
+     * @param user 当前登录用户
+     * @return 子评论列表（树形结构）
+     */
+    private List<RemarkVO> buildReplyTree(String parentId, UserDO user) {
+        if (parentId == null) {
+            return new ArrayList<>();
+        }
+
+        // 查询所有直接子回复（isReply = true 且 parentId = 当前节点）
+        List<RemarkDO> children = remarkRepository.findRemarksByParentIdAndIsReplyTrue(parentId);
+
+        // 按时间排序
+        children.sort((r1, r2) -> {
+            String t1 = r1.getCreatedAt() != null ? r1.getCreatedAt() : "";
+            String t2 = r2.getCreatedAt() != null ? r2.getCreatedAt() : "";
+            return t1.compareTo(t2);
+        });
+
+        List<RemarkVO> childVOList = new ArrayList<>();
+        for (RemarkDO child : children) {
+            if (child == null || child.get_id() == null) continue;
+
+            // 先查 Redis
+            RemarkDO childDO = null;
+            String redisKey = remarkIdKey + child.get_id();
+            if (redisTemplate.hasKey(redisKey)) {
+                childDO = (RemarkDO) redisTemplate.opsForValue().get(redisKey);
+                redisTemplate.expire(redisKey, Duration.ofMinutes(15));
+            } else {
+                // Redis 没有则从 MongoDB 获取
+                childDO = remarkRepository.findById(child.get_id()).orElse(null);
+                if (childDO != null) {
+                    redisTemplate.opsForValue().set(redisKey, childDO);
+                    redisTemplate.expire(redisKey, Duration.ofMinutes(15));
+                }
+            }
+
+            if (childDO == null) continue;
+
+            // 当前节点转 VO
+            RemarkVO childVO = transferDO2VO(childDO, user);
+            // 递归构建子节点
+            List<RemarkVO> grandChildren = buildReplyTree(childDO.get_id(), user);
+            childVO.setReplies(grandChildren);
+
+            childVOList.add(childVO);
+        }
+
+        return childVOList;
+    }
+
     @Transactional
     public List<RemarkVO> SelectRemark(RemarkSelectByNoteDTO remarkSelectByNoteDTO, Long loginUserId) {
         log.info(loginUserId.toString());
@@ -182,62 +236,8 @@ public class RemarkService {
             // 将DO转换为VO
             RemarkVO curVO = transferDO2VO(curDO, user);
             log.info(curVO.toString());
-            // --- 二级评论列表处理 ---
-            List<String> remarkSecondLayerList = new ArrayList<>();
-            String replyKey = replyToIdKey + cur;
-            if (redisTemplate.hasKey(replyKey)) {
-                // 从Redis获取二级评论ID列表
-                List<Object> tmpReplyList = redisTemplate.opsForList().range(replyKey, 0, -1);
-                redisTemplate.expire(replyKey,Duration.ofMinutes(15));
-                if (tmpReplyList != null) {
-                    remarkSecondLayerList = tmpReplyList.stream().map(Object::toString).toList();
-                }
-            } else {
-                // Redis没有则从MongoDB获取
-                log.info("try from mongodb");
-                List<RemarkDO> replyList = remarkRepository.findRemarksByParentIdAndIsReplyTrue(cur);
-                for (RemarkDO reply : replyList) {
-                    if (reply != null && reply.get_id() != null) {
-                        redisTemplate.opsForList().rightPush(replyKey+curDO.get_id(),reply.get_id());
-                        redisTemplate.expire(replyKey,Duration.ofMinutes(15));
-                        remarkSecondLayerList.add(reply.get_id());
-                    }
-                }
-            }
-
-            // --- 二级评论VO构建 ---
-            List<RemarkVO> replies = new ArrayList<>();
-
-            for (String replyId : remarkSecondLayerList) {
-
-                RemarkDO replyDO = null;
-
-                // 先查 Redis
-                String redisKey = remarkIdKey + replyId;
-                if (redisTemplate.hasKey(redisKey)) {
-                    replyDO = (RemarkDO) redisTemplate.opsForValue().get(redisKey);
-                    redisTemplate.expire(redisKey,Duration.ofMinutes(15));
-                }
-
-                //  Redis 中没有 → 查 MongoDB
-                if (replyDO == null) {
-                    replyDO = remarkRepository.findById(replyId)
-                            .orElse(null);
-
-                    //  查到了 → 写回 Redis，提升下次命中率
-                    if (replyDO != null) {
-                        redisTemplate.opsForValue().set(redisKey, replyDO);
-                        redisTemplate.expire(redisKey,Duration.ofMinutes(15));
-                    }
-                }
-
-                //  查不到就跳过
-                if (replyDO != null) {
-                    RemarkVO replyVO = transferDO2VO(replyDO, user);
-                    replies.add(replyVO);
-                }
-            }
-
+            // --- 构建无限层级回复树 ---
+            List<RemarkVO> replies = buildReplyTree(curDO.get_id(), user);
             curVO.setReplies(replies);
             result.add(curVO);
             log.info("show curVO"+curVO.toString());
