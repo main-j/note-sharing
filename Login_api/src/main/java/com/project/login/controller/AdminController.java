@@ -1,0 +1,264 @@
+package com.project.login.controller;
+
+import com.project.login.model.entity.UserEntity;
+import com.project.login.model.request.sensitive.SensitiveBatchCheckRequest;
+import com.project.login.model.request.sensitive.SensitiveTextCheckRequest;
+import com.project.login.model.response.StandardResponse;
+import com.project.login.model.vo.NoteShowVO;
+import com.project.login.model.vo.RemarkDetailVO;
+import com.project.login.model.vo.SensitiveCheckResult;
+import com.project.login.service.adminservice.OnlineUserService;
+import com.project.login.service.noting.NoteService;
+import com.project.login.service.remark.RemarkService;
+import com.project.login.service.sensitive.DeepFilterService;
+import com.project.login.service.sensitive.FastFilterService;
+import com.project.login.service.sensitive.ModerationService;
+import com.project.login.service.sensitive.SensitiveWordService;
+import com.project.login.model.request.moderation.HandleModerationRequest;
+import com.project.login.model.vo.NoteModerationVO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
+@Tag(name = "Admin", description = "管理员相关接口")
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/admin")
+public class AdminController {
+
+    private final OnlineUserService onlineUserService;
+    private final NoteService noteService;
+    private final RemarkService remarkService;
+    private final SensitiveWordService sensitiveWordService;
+    private final FastFilterService fastFilterService;
+    private final DeepFilterService deepFilterService;
+    private final ModerationService moderationService;
+
+    @Operation(summary = "获取当前在线人数")
+    @GetMapping("/online-count")
+    public StandardResponse<Map<String, Integer>> getOnlineUserCount() {
+        int count = onlineUserService.getOnlineUserCount();
+        
+        Map<String, Integer> result = new HashMap<>();
+        result.put("onlineCount", count);
+        
+        return StandardResponse.success("获取成功", result);
+    }
+
+    @Operation(summary = "获取当前所有在线用户")
+    @GetMapping("/online-users")
+    public StandardResponse<List<Map<String, Object>>> getAllOnlineUsers() {
+        List<Map<String, Object>> usersWithLoginTime = onlineUserService.getAllOnlineUsersWithLoginTime();
+        
+        // 转换为返回格式
+        List<Map<String, Object>> userList = new ArrayList<>();
+        for (Map<String, Object> userInfo : usersWithLoginTime) {
+            UserEntity user = (UserEntity) userInfo.get("user");
+            Date loginTime = (Date) userInfo.get("loginTime");
+            
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("id", user.getId());
+            userMap.put("username", user.getUsername());
+            userMap.put("email", user.getEmail());
+            userMap.put("studentNumber", user.getStudentNumber() != null ? user.getStudentNumber() : "");
+            userMap.put("role", user.getRole() != null ? user.getRole() : "User");
+            userMap.put("enabled", user.isEnabled());
+            userMap.put("avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "");
+            // 添加上线时间（TOKEN生效时间）
+            userMap.put("loginTime", loginTime != null ? loginTime : null);
+            userList.add(userMap);
+        }
+        
+        return StandardResponse.success("获取成功", userList);
+    }
+
+    @Operation(summary = "统计笔记总数")
+    @GetMapping("/notes/count")
+    public StandardResponse<Map<String, Long>> getNoteCount() {
+        Long count = noteService.getNoteCount();
+        
+        Map<String, Long> result = new HashMap<>();
+        result.put("noteCount", count);
+        
+        return StandardResponse.success("获取成功", result);
+    }
+
+    @Operation(summary = "获取所有笔记列表（按数据库顺序）")
+    @GetMapping("/notes/list")
+    public StandardResponse<List<NoteShowVO>> getAllNotes() {
+        List<NoteShowVO> notes = noteService.getAllNotes();
+        return StandardResponse.success("获取成功", notes);
+    }
+
+    @Operation(summary = "统计评论总数")
+    @GetMapping("/remarks/count")
+    public StandardResponse<Map<String, Long>> getRemarkCount() {
+        Long count = remarkService.getRemarkCount();
+        
+        Map<String, Long> result = new HashMap<>();
+        result.put("remarkCount", count);
+        
+        return StandardResponse.success("获取成功", result);
+    }
+
+    @Operation(summary = "获取所有评论列表（按数据库顺序）")
+    @GetMapping("/remarks/list")
+    public StandardResponse<List<RemarkDetailVO>> getAllRemarks() {
+        List<RemarkDetailVO> remarks = remarkService.getAllRemarks();
+        return StandardResponse.success("获取成功", remarks);
+    }
+
+    @Operation(summary = "检查纯文本敏感词")
+    @PostMapping("/sensitive/check/text")
+    public StandardResponse<SensitiveCheckResult> checkText(@RequestBody SensitiveTextCheckRequest request) {
+        SensitiveCheckResult result = sensitiveWordService.checkText(request.getText());
+        return StandardResponse.success("检查完成", result);
+    }
+
+    @Operation(summary = "检查笔记敏感词（快速模式，使用摘要）")
+    @GetMapping("/sensitive/check/note/{noteId}")
+    public StandardResponse<SensitiveCheckResult> checkNote(@PathVariable Long noteId) {
+        SensitiveCheckResult result = sensitiveWordService.checkNote(noteId);
+        return StandardResponse.success("检查完成", result);
+    }
+
+    @Operation(summary = "检查笔记敏感词（全文模式）")
+    @GetMapping("/sensitive/check/note/{noteId}/full")
+    public StandardResponse<SensitiveCheckResult> checkNoteFull(@PathVariable Long noteId) {
+        SensitiveCheckResult result = sensitiveWordService.checkNote(noteId, true);
+        return StandardResponse.success("检查完成", result);
+    }
+
+    @Operation(summary = "批量检查笔记敏感词")
+    @PostMapping("/sensitive/check/batch")
+    public StandardResponse<Map<String, Object>> batchCheckNotes(@RequestBody SensitiveBatchCheckRequest request) {
+        List<Long> noteIds = request.getNoteIds();
+        Boolean full = request.getFull() != null ? request.getFull() : false;
+        // 注意：concurrency 参数目前未使用，未来可用于并发控制
+        
+        Map<String, Object> results = new HashMap<>();
+        List<Map<String, Object>> checkResults = new ArrayList<>();
+        
+        for (Long noteId : noteIds) {
+            try {
+                SensitiveCheckResult result = sensitiveWordService.checkNote(noteId, full);
+                Map<String, Object> item = new HashMap<>();
+                item.put("noteId", noteId);
+                item.put("status", result.getStatus());
+                item.put("riskLevel", result.getRiskLevel());
+                item.put("score", result.getScore());
+                checkResults.add(item);
+            } catch (Exception e) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("noteId", noteId);
+                item.put("status", "ERROR");
+                item.put("message", e.getMessage());
+                checkResults.add(item);
+            }
+        }
+        
+        results.put("total", noteIds.size());
+        results.put("results", checkResults);
+        
+        return StandardResponse.success("批量检查完成", results);
+    }
+
+    @Operation(summary = "快速过滤检查文本（使用Trie树）")
+    @PostMapping("/sensitive/fast-filter")
+    public StandardResponse<Map<String, Object>> fastFilter(@RequestBody Map<String, String> request) {
+        String text = request.get("text");
+        if (text == null || text.isEmpty()) {
+            return StandardResponse.error("文本不能为空");
+        }
+        
+        List<String> hits = fastFilterService.match(text);
+        Map<String, Object> result = new HashMap<>();
+        result.put("hasSensitiveWords", !hits.isEmpty());
+        result.put("hits", hits);
+        result.put("hitCount", hits.size());
+        
+        return StandardResponse.success("快速过滤完成", result);
+    }
+
+    @Operation(summary = "重新加载敏感词库")
+    @PostMapping("/sensitive/reload")
+    public StandardResponse<Map<String, String>> reloadSensitiveWords() {
+        fastFilterService.reload();
+        Map<String, String> result = new HashMap<>();
+        result.put("message", "敏感词库已重新加载");
+        return StandardResponse.success("重新加载成功", result);
+    }
+
+    @Operation(summary = "深度检查文本（使用keywords.txt完整词库）")
+    @PostMapping("/sensitive/deep-check")
+    public StandardResponse<Map<String, Object>> deepCheck(@RequestBody Map<String, String> request) {
+        String text = request.get("text");
+        if (text == null || text.isEmpty()) {
+            return StandardResponse.error("文本不能为空");
+        }
+        
+        Map<String, Object> result = deepFilterService.deepCheck(text);
+        return StandardResponse.success("深度检查完成", result);
+    }
+
+    @Operation(summary = "重新加载深度检查词库（keywords.txt）")
+    @PostMapping("/sensitive/deep-reload")
+    public StandardResponse<Map<String, String>> reloadDeepFilter() {
+        deepFilterService.reload();
+        Map<String, String> result = new HashMap<>();
+        result.put("message", "深度检查词库已重新加载");
+        return StandardResponse.success("重新加载成功", result);
+    }
+
+    @Operation(summary = "获取待处理的审查记录列表")
+    @GetMapping("/moderation/pending")
+    public StandardResponse<List<NoteModerationVO>> getPendingModerations() {
+        List<NoteModerationVO> moderations = moderationService.getPendingFlagged();
+        return StandardResponse.success("获取成功", moderations);
+    }
+
+    @Operation(summary = "获取审查记录详情")
+    @GetMapping("/moderation/{id}")
+    public StandardResponse<NoteModerationVO> getModerationById(@PathVariable Long id) {
+        NoteModerationVO moderation = moderationService.getById(id);
+        if (moderation == null) {
+            return StandardResponse.error("审查记录不存在");
+        }
+        return StandardResponse.success("获取成功", moderation);
+    }
+
+    @Operation(summary = "获取笔记的审查历史")
+    @GetMapping("/moderation/note/{noteId}")
+    public StandardResponse<List<NoteModerationVO>> getModerationsByNoteId(@PathVariable Long noteId) {
+        List<NoteModerationVO> moderations = moderationService.getByNoteId(noteId);
+        return StandardResponse.success("获取成功", moderations);
+    }
+
+    @Operation(summary = "处理审查记录（标记为已处理并添加备注）")
+    @PostMapping("/moderation/{id}/handle")
+    public StandardResponse<Map<String, String>> handleModeration(
+            @PathVariable Long id,
+            @RequestBody HandleModerationRequest request) {
+        try {
+            moderationService.handleModeration(
+                    id,
+                    request.getIsHandled() != null ? request.getIsHandled() : true,
+                    request.getAdminComment()
+            );
+            Map<String, String> result = new HashMap<>();
+            result.put("message", "处理成功");
+            return StandardResponse.success("处理成功", result);
+        } catch (RuntimeException e) {
+            return StandardResponse.error(e.getMessage());
+        }
+    }
+}

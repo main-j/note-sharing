@@ -63,10 +63,12 @@
 <script setup>
 import { ref, computed, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
+import { useUserStore } from "@/stores/user";
 import api from "../api/request";
 import MessageToast from "./MessageToast.vue";
 
 const router = useRouter();
+const userStore = useUserStore();
 
 const username = ref("");
 const email = ref("");
@@ -125,6 +127,33 @@ const sendCode = async () => {
   }
 };
 
+// 辅助函数：从 JWT token 中解码 payload
+function decodeJwtPayload(token) {
+  if (!token) return null;
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error('JWT 解码失败:', e);
+    return null;
+  }
+}
+
+// 根据 token 中的角色决定跳转路径
+function getRedirectPathByToken(token) {
+  const payload = decodeJwtPayload(token);
+  if (payload && payload.role === 'Admin') {
+    return '/admin/main';
+  }
+  return '/main';
+}
+
 const register = async () => {
   if (!username.value || !email.value || !studentNumber.value || !password.value || !verificationCode.value) {
     showMessage("请填写完整信息！", "error");
@@ -135,6 +164,7 @@ const register = async () => {
     return;
   }
   try {
+    // 1. 先完成注册
     await api.post("/auth/register", {
       username: username.value,
       studentNumber: studentNumber.value,
@@ -142,7 +172,34 @@ const register = async () => {
       password: password.value,
       code: verificationCode.value,
     });
-    showMessage("注册成功！", "success", "/login");
+    
+    // 2. 注册成功后，自动登录获取 token
+    try {
+      const loginRes = await api.post("/auth/login", {
+        email: email.value,
+        password: password.value,
+      });
+      
+      const token = loginRes.data?.token || loginRes.data;
+      
+      if (token) {
+        // 3. 保存 token 到 store 和 localStorage
+        userStore.decodeAndSetToken(token);
+        
+        // 4. 根据 token 中的角色决定跳转路径
+        const payload = decodeJwtPayload(token);
+        const redirectPath = payload && payload.role === 'Admin' ? '/admin/main' : '/main';
+        
+        showMessage("注册成功！正在跳转...", "success", redirectPath);
+      } else {
+        // 如果没有获取到 token，默认跳转到用户登录页
+        showMessage("注册成功！", "success", "/login");
+      }
+    } catch (loginError) {
+      // 自动登录失败，但注册成功，跳转到用户登录页
+      console.warn("自动登录失败，但注册成功:", loginError);
+      showMessage("注册成功！请手动登录", "success", "/login");
+    }
   } catch (e) {
     showMessage("注册失败：" + (e.response?.data?.error || e.message), "error");
   }

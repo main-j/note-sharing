@@ -1,10 +1,12 @@
 package com.project.login.service.login;
 
 import com.project.login.model.entity.UserEntity;
+import com.project.login.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.io.Decoders;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +16,10 @@ import java.util.Map;
 import java.util.function.Function;
 
 @Service
+@RequiredArgsConstructor
 public class JwtService {
+
+    private final UserRepository userRepository;
 
     @Value("${jwt.secret}")
     private String secretKey;
@@ -27,7 +32,8 @@ public class JwtService {
         Map<String, Object> claims = Map.of(
                 "userId", user.getId(),
                 "email", user.getEmail(),
-                "studentNumber", user.getStudentNumber()
+                "studentNumber", user.getStudentNumber(),
+                "role", user.getRole() != null ? user.getRole() : "User"
         );
 
         return buildToken(claims, user.getEmail());
@@ -52,6 +58,10 @@ public class JwtService {
 
     public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
+    }
+
+    public Date extractIssuedAt(String token) {
+        return extractClaim(token, Claims::getIssuedAt);
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> fn) {
@@ -98,6 +108,30 @@ public class JwtService {
         } catch (Exception e) {
             return null; // token 无效
         }
+    }
+
+    // --- Extract Role from token ---
+    public String extractRole(String token) {
+        try {
+            return extractClaim(token, claims -> {
+                Object role = claims.get("role");
+                return role != null ? role.toString() : null;
+            });
+        } catch (Exception e) {
+            return null; // token 无效
+        }
+    }
+
+    // --- Get User by Token ---
+    public UserEntity getUserByToken(String token) {
+        if (token == null || token.isEmpty()) return null;
+
+        // 从 JWT 中解析邮箱
+        String email = extractEmail(token);
+        if (email == null || email.isEmpty()) return null;
+
+        // 根据邮箱查询用户
+        return userRepository.findByEmail(email).orElse(null);
     }
 
 }

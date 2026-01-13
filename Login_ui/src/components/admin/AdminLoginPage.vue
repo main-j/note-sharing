@@ -1,0 +1,142 @@
+<template>
+  <div class="form-container">
+    <h2>管理员登录</h2>
+
+    <div class="input-group">
+      <label>邮箱</label>
+      <input v-model="email" type="email" placeholder="输入管理员邮箱" />
+    </div>
+
+    <div class="input-group">
+      <label>密码</label>
+      <input v-model="password" type="password" placeholder="输入密码" />
+    </div>
+
+    <button class="btn" @click="login">登录</button>
+
+    <div class="links">
+      <router-link to="/login">返回用户登录</router-link>
+    </div>
+
+    <!-- 消息提示组件 -->
+    <MessageToast
+      v-if="showToast"
+      :message="toastMessage"
+      :type="toastType"
+      :redirect-to="toastRedirect"
+      :duration="2000"
+      @close="showToast = false"
+    />
+  </div>
+</template>
+
+<script setup>
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { adminLogin } from "../../api/admin";
+import MessageToast from "../MessageToast.vue";
+
+// 输入框数据
+const email = ref("");
+const password = ref("");
+
+const router = useRouter();
+
+// 消息提示相关
+const showToast = ref(false);
+const toastMessage = ref("");
+const toastType = ref("success");
+const toastRedirect = ref(null);
+
+// 显示消息提示
+const showMessage = (message, type = "success", redirectTo = null) => {
+  toastMessage.value = message;
+  toastType.value = type;
+  toastRedirect.value = redirectTo;
+  showToast.value = true;
+};
+
+// 登录方法
+const login = async () => {
+  if (!email.value || !password.value) {
+    showMessage("请填写完整信息！", "error");
+    return;
+  }
+
+  try {
+    const res = await adminLogin(email.value, password.value);
+
+    console.log(res);
+
+    // 保存 token
+    if (res.token) {
+      localStorage.setItem("token", res.token);
+      // 显示成功消息并自动跳转
+      showMessage("登录成功！", "success", "/admin/main");
+    } else {
+      showMessage("登录失败：未获取到 token", "error");
+    }
+
+  } catch (e) {
+    showMessage("登录失败：" + (e.response?.data?.message || e.message), "error");
+  }
+};
+</script>
+
+<style scoped>
+.form-container {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #333;
+}
+.input-group {
+  margin-bottom: 15px;
+}
+.input-group label {
+  font-size: 14px;
+  margin-bottom: 4px;
+  display: block;
+  color: #555;
+}
+.input-group input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 15px;
+}
+.btn {
+  padding: 12px;
+  margin-top: 10px;
+  border: none;
+  background-color: #4e54c8;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+.btn:hover {
+  background-color: #3c40a8;
+}
+.links {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+.links a {
+  color: #4e54c8;
+  font-size: 14px;
+  text-decoration: none;
+}
+.links a:hover {
+  text-decoration: underline;
+}
+</style>

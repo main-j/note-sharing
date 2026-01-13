@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.*;
 @Mapper
 public interface UserMapper {
 
-    @Select("SELECT id, username, password_hash AS passwordHash, enabled, studentNumber, email, " +
+    @Select("SELECT id, username, password_hash AS passwordHash, enabled, role, studentNumber, email, " +
             "created_at AS createdAt, updated_at AS updatedAt, avatar_url AS avatarUrl " +
             "FROM users WHERE id = #{id}")
     UserDO selectById(@Param("id") Long id);
@@ -16,18 +16,18 @@ public interface UserMapper {
             "FROM users WHERE id = #{id}")
     String selectNameById(Long id);
 
-    @Select("SELECT id, username, password_hash AS passwordHash, enabled, studentNumber, email, " +
+    @Select("SELECT id, username, password_hash AS passwordHash, enabled, role, studentNumber, email, " +
             "created_at AS createdAt, updated_at AS updatedAt, avatar_url AS avatarUrl " +
             "FROM users WHERE email = #{email}")
     UserEntity selectByEmail(@Param("email") String email);
 
-    @Select("SELECT id, username, password_hash AS passwordHash, enabled, studentNumber, email, " +
+    @Select("SELECT id, username, password_hash AS passwordHash, enabled, role, studentNumber, email, " +
             "created_at AS createdAt, updated_at AS updatedAt, avatar_url AS avatarUrl " +
             "FROM users WHERE username = #{username}")
     UserEntity selectByUsername(@Param("username") String username);
 
-    @Insert("INSERT INTO users (username, password_hash, enabled, studentNumber, email, created_at, updated_at) " +
-            "VALUES (#{username}, #{passwordHash}, #{enabled}, #{studentNumber}, #{email}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+    @Insert("INSERT INTO users (username, password_hash, enabled, role, studentNumber, email, created_at, updated_at) " +
+            "VALUES (#{username}, #{passwordHash}, #{enabled}, #{role}, #{studentNumber}, #{email}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertUser(UserEntity user);
 
@@ -35,6 +35,7 @@ public interface UserMapper {
             "SET username = #{username}, " +
             "    password_hash = #{passwordHash}, " +
             "    enabled = #{enabled}, " +
+            "    role = #{role}, " +
             "    studentNumber = #{studentNumber}, " +
             "    email = #{email}, " +
             "    avatar_url = #{avatarUrl}, " +

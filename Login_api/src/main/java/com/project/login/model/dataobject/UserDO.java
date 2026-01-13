@@ -27,6 +27,9 @@ public class UserDO {
     private boolean enabled = false;
 
     @Builder.Default
+    private String role = "User"; // 用户角色：User 或 Admin
+
+    @Builder.Default
     private Instant createdAt = Instant.now();
 
     @Builder.Default

@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -297,6 +298,33 @@ public class NoteService {
         notificationService.createNotePublishNotifications(existing.getId());
 
         return convert.toVO(existing);
+    }
+
+    @Transactional(readOnly = true)
+    public Long getNoteCount() {
+        return noteMapper.count();
+    }
+
+    @Transactional(readOnly = true)
+    public List<NoteShowVO> getAllNotes() {
+        List<NoteDO> doList = noteMapper.selectAll();
+        List<NoteShowVO> voList = new ArrayList<>();
+        for (NoteDO noteDO : doList) {
+            NoteShowVO vo = new NoteShowVO();
+            vo.setId(noteDO.getId());
+            vo.setTitle(noteDO.getTitle());
+            vo.setFileType(noteDO.getFileType());
+            vo.setNotebookId(noteDO.getNotebookId());
+            vo.setCreatedAt(noteDO.getCreatedAt());
+            vo.setUpdatedAt(noteDO.getUpdatedAt());
+            // 获取文件访问URL
+            if (noteDO.getFilename() != null && !noteDO.getFilename().isEmpty()) {
+                String url = minioservice.getFileUrl(noteDO.getFilename());
+                vo.setUrl(url);
+            }
+            voList.add(vo);
+        }
+        return voList;
     }
 
 }

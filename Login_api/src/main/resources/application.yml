@@ -90,3 +90,17 @@ elasticsearch:
   port: 9200
   scheme: http
 
+# ModelScope API 配置
+modelscope:
+  base-url: https://api-inference.modelscope.cn/v1
+  api:
+    key: "ms-3746afb4-3d97-4748-a356-774a71525f47"
+  model: Qwen/Qwen2.5-7B-Instruct
+
+# 敏感词扫描配置
+sensitive:
+  scan:
+    chunk-size: 4000        # 长文本分块大小（字符数）
+    concurrency: 4          # 并发审查线程数
+  keywords:
+    path: ""                 # 外部敏感词文件路径（可选，留空则使用classpath下的文件）

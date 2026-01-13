@@ -62,4 +62,56 @@ public class ContentSummaryService {
             throw new RuntimeException("解析 PDF 文件失败", e);
         }
     }
+
+    /**
+     * 提取完整文本内容（用于敏感词全文检查）
+     * @param bytes 文件字节数组
+     * @param filename 文件名（用于判断文件类型）
+     * @return 完整文本内容
+     */
+    public String extractFullText(byte[] bytes, String filename) {
+        if (filename == null) {
+            throw new RuntimeException("文件名不能为空");
+        }
+        String lowerFilename = filename.toLowerCase();
+
+        if (lowerFilename.endsWith(".md")) {
+            return extractMarkdownFullText(bytes);
+        } else if (lowerFilename.endsWith(".pdf")) {
+            return extractPdfFullText(bytes);
+        } else {
+            throw new RuntimeException("不支持的文件类型: " + filename);
+        }
+    }
+
+    /**
+     * 提取 Markdown 完整文本
+     */
+    private String extractMarkdownFullText(byte[] bytes) {
+        try {
+            String content = new String(bytes, StandardCharsets.UTF_8);
+            // 去掉 Markdown 标记，保留文本内容
+            content = content.replaceAll("(?m)^#+\\s*", "");        // 去掉标题标记
+            content = content.replaceAll("\\*|_|`|~", "");          // 去掉强调符号
+            content = content.replaceAll("!\\[.*?\\]\\(.*?\\)", ""); // 去掉图片
+            content = content.replaceAll("\\[.*?\\]\\(.*?\\)", "");  // 去掉链接
+            content = content.replaceAll("\\s+", " ");              // 多空格归一化
+            return content;
+        } catch (Exception e) {
+            throw new RuntimeException("解析 Markdown 文件失败", e);
+        }
+    }
+
+    /**
+     * 提取 PDF 完整文本
+     */
+    private String extractPdfFullText(byte[] bytes) {
+        try (PDDocument document = PDDocument.load(bytes)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            String text = stripper.getText(document).replaceAll("\\s+", " ");
+            return text;
+        } catch (Exception e) {
+            throw new RuntimeException("解析 PDF 文件失败", e);
+        }
+    }
 }

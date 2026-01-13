@@ -31,6 +31,9 @@ public class UserEntity {
     @Column(nullable = false)
     private boolean enabled = false;
 
+    @Column(nullable = false, length = 50)
+    private String role = "User"; // 用户角色：User 或 Admin
+
     @Column(name = "created_at", updatable = false)
     private Instant createdAt = Instant.now();
 

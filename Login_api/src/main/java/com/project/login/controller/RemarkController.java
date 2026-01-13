@@ -1,6 +1,5 @@
 package com.project.login.controller;
 
-import com.project.login.model.dataobject.UserDO;
 import com.project.login.model.dto.remark.RemarkDeleteDTO;
 import com.project.login.model.dto.remark.RemarkInsertDTO;
 import com.project.login.model.dto.remark.RemarkSelectByNoteDTO;
@@ -65,6 +64,16 @@ public class RemarkController {
     ) {
         Boolean result = remarkService.cancelLikeRemark(remarkId, loginUserId);
         return StandardResponse.success(result);
+    }
+
+    @Operation(summary = "Get comment tree by remark ID")
+    @GetMapping("/tree")
+    public StandardResponse<RemarkVO> getRemarkTree(
+            @RequestParam String remarkId,
+            @RequestParam Long loginUserId
+    ) {
+        RemarkVO remarkTree = remarkService.getRemarkTreeByRemarkId(remarkId, loginUserId);
+        return StandardResponse.success(remarkTree);
     }
 
 }

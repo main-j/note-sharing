@@ -1,5 +1,6 @@
 package com.project.login.service.login;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.login.model.request.login.RegisterRequest;
 import com.project.login.model.request.login.ResetPasswordRequest;
 import com.project.login.model.entity.UserEntity;
@@ -7,9 +8,14 @@ import com.project.login.mapper.UserMapper;
 import com.project.login.repository.UserRepository;
 import com.project.login.service.minio.MinioService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -37,14 +43,37 @@ public class UserService {
             throw new RuntimeException("验证码无效或已过期");
         }
 
+        // 检查邮箱是否在白名单中，决定用户角色
+        String role = checkAdminWhitelist(req.getEmail()) ? "Admin" : "User";
+
         UserEntity user = new UserEntity();
         user.setUsername(req.getUsername());
         user.setStudentNumber(req.getStudentNumber());
         user.setEmail(req.getEmail());
         user.setPassword_hash(passwordEncoder.encode(req.getPassword()));
         user.setEnabled(true);
+        user.setRole(role);
 
         userRepository.save(user);
+    }
+
+    // ----------------- 检查管理员白名单 -----------------
+    @SuppressWarnings("unchecked")
+    private boolean checkAdminWhitelist(String email) {
+        try {
+            ClassPathResource resource = new ClassPathResource("admin-whitelist.json");
+            InputStream inputStream = resource.getInputStream();
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> whitelist = mapper.readValue(inputStream, 
+                mapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class));
+            
+            List<String> admins = (List<String>) whitelist.get("admins");
+            
+            return admins != null && admins.contains(email);
+        } catch (Exception e) {
+            // 如果读取白名单文件失败，默认返回 false（普通用户）
+            return false;
+        }
     }
 
     // ----------------- 重设密码 -----------------

@@ -30,6 +30,7 @@ export const useUserStore = defineStore('user', {
             email: null,
             studentNumber: null, // 与后端字段名保持一致
             avatarUrl: null, // 用户头像URL
+            role: null, // 用户角色 (Admin/User)
             token: localStorage.getItem('token') || null, // 保存 Token
         },
         isAuthenticated: !!localStorage.getItem('token'), // 根据 token 判断是否登录
@@ -40,6 +41,8 @@ export const useUserStore = defineStore('user', {
         getCurrentUser: (state) => state.userInfo,
         // 检查登录状态
         isLoggedIn: (state) => state.isAuthenticated && !!state.userInfo.token,
+        // 检查是否为管理员
+        isAdmin: (state) => state.userInfo.role === 'Admin',
     },
 
     actions: {
@@ -63,9 +66,10 @@ export const useUserStore = defineStore('user', {
                 this.userInfo.email = payload.email;
                 this.userInfo.studentNumber = payload.studentNumber;
                 this.userInfo.avatarUrl = payload.avatarUrl || null;
+                this.userInfo.role = payload.role || 'User'; // 提取角色信息
 
                 this.isAuthenticated = true;
-                console.log('Pinia: Token 解析成功，用户数据已设置。');
+                console.log('Pinia: Token 解析成功，用户数据已设置。角色:', this.userInfo.role);
                 return true;
             }
             this.clearUserData(); // 如果解码失败，则清除数据
@@ -83,9 +87,10 @@ export const useUserStore = defineStore('user', {
             this.userInfo.email = user.email;
             this.userInfo.studentNumber = user.studentNumber;
             this.userInfo.avatarUrl = user.avatarUrl || null;
+            this.userInfo.role = user.role || 'User'; // 设置角色信息
             this.isAuthenticated = true;
 
-            console.log('Pinia: 用户数据已设置:', user.username);
+            console.log('Pinia: 用户数据已设置:', user.username, '角色:', this.userInfo.role);
         },
 
         /**
@@ -98,6 +103,7 @@ export const useUserStore = defineStore('user', {
                 email: null,
                 studentNumber: null,
                 avatarUrl: null,
+                role: null,
                 token: null
             };
             this.isAuthenticated = false;

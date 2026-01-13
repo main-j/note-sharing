@@ -25,4 +25,12 @@ public class StandardResponse<T> {
                 .data(data)
                 .build();
     }
+
+    public static <T> StandardResponse<T> error(String message) {
+        return StandardResponse.<T>builder()
+                .code(400)
+                .message(message)
+                .data(null)
+                .build();
+    }
 }

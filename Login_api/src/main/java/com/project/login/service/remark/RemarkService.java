@@ -12,6 +12,8 @@ import com.project.login.model.dto.remark.RemarkDeleteDTO;
 import com.project.login.model.dto.remark.RemarkInsertDTO;
 import com.project.login.model.dto.remark.RemarkSelectByNoteDTO;
 import com.project.login.model.vo.RemarkVO;
+import com.project.login.model.vo.RemarkDetailVO;
+import com.project.login.model.dataobject.NoteDO;
 import com.project.login.repository.RemarkLikeCountRepository;
 import com.project.login.repository.RemarkLikeByUsersRepository;
 import com.project.login.repository.RemarkRepository;
@@ -20,9 +22,8 @@ import com.project.login.service.notification.NotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.catalina.User;
-import org.bson.types.ObjectId;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -684,6 +685,125 @@ public class RemarkService {
 
     }
 
+    // --- 统计和列表查询 ---
 
+    @Transactional
+    public Long getRemarkCount() {
+        return remarkRepository.count();
+    }
+
+    @Transactional
+    public List<RemarkDetailVO> getAllRemarks() {
+        List<RemarkDO> remarkDOList = remarkRepository.findAll(Sort.by(Sort.Direction.ASC, "_id"));
+        
+        if (remarkDOList == null || remarkDOList.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<Long> noteIds = remarkDOList.stream()
+                .map(RemarkDO::getNoteId)
+                .filter(noteId -> noteId != null)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, String> noteTitleMap = new HashMap<>();
+        for (Long noteId : noteIds) {
+            try {
+                NoteDO note = noteMapper.selectById(noteId);
+                if (note != null) {
+                    noteTitleMap.put(noteId, note.getTitle());
+                } else {
+                    noteTitleMap.put(noteId, "笔记已删除");
+                }
+            } catch (Exception e) {
+                log.warn("获取笔记标题失败, noteId={}", noteId, e);
+                noteTitleMap.put(noteId, "未知笔记");
+            }
+        }
+
+        List<RemarkDetailVO> voList = new ArrayList<>();
+        for (RemarkDO remarkDO : remarkDOList) {
+            RemarkDetailVO vo = RemarkDetailVO.builder()
+                    ._id(remarkDO.get_id())
+                    .noteId(remarkDO.getNoteId())
+                    .noteTitle(noteTitleMap.getOrDefault(remarkDO.getNoteId(), "未知笔记"))
+                    .userId(remarkDO.getUserId())
+                    .username(remarkDO.getUsername())
+                    .content(remarkDO.getContent())
+                    .createdAt(remarkDO.getCreatedAt())
+                    .parentId(remarkDO.getParentId())
+                    .replyToUsername(remarkDO.getReplyToUsername())
+                    .isReply(remarkDO.getIsReply())
+                    .replyToRemarkId(remarkDO.getReplyToRemarkId())
+                    .build();
+            voList.add(vo);
+        }
+
+        return voList;
+    }
+
+    @Transactional //通过某一节点查询构建评论树
+    public RemarkVO getRemarkTreeByRemarkId(String remarkId, Long loginUserId) {
+        if (remarkId == null || remarkId.isEmpty()) {
+            throw new RuntimeException("评论ID不能为空");
+        }
+
+        RemarkDO targetRemark = remarkRepository.findById(remarkId)
+                .orElseThrow(() -> new RuntimeException("评论不存在"));
+
+        RemarkDO firstLevelRemark = findFirstLevelRemark(targetRemark);
+
+        UserDO user = userMapper.selectById(loginUserId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        List<RemarkDO> secondLevelRemarks = remarkRepository.findRemarksByParentIdAndIsReplyTrue(firstLevelRemark.get_id());
+
+        Comparator<RemarkDO> timeComparator = (r1, r2) -> {
+            String time1 = r1.getCreatedAt() != null ? r1.getCreatedAt() : "";
+            String time2 = r2.getCreatedAt() != null ? r2.getCreatedAt() : "";
+            return time1.compareTo(time2);
+        };
+        secondLevelRemarks.sort(timeComparator);
+
+        List<RemarkVO> secondLevelVOList = new ArrayList<>();
+        for (RemarkDO secondLevel : secondLevelRemarks) {
+            RemarkVO secondLevelVO = transferDO2VO(secondLevel, user);
+            
+            List<RemarkDO> thirdLevelRemarks = remarkRepository.findRemarksByParentIdAndIsReplyTrue(secondLevel.get_id());
+            thirdLevelRemarks.sort(timeComparator);
+            
+            List<RemarkVO> thirdLevelVOList = new ArrayList<>();
+            for (RemarkDO thirdLevel : thirdLevelRemarks) {
+                RemarkVO thirdLevelVO = transferDO2VO(thirdLevel, user);
+                thirdLevelVOList.add(thirdLevelVO);
+            }
+            
+            secondLevelVO.setReplies(thirdLevelVOList);
+            secondLevelVOList.add(secondLevelVO);
+        }
+
+        RemarkVO firstLevelVO = transferDO2VO(firstLevelRemark, user);
+        firstLevelVO.setReplies(secondLevelVOList);
+
+        return firstLevelVO;
+    }
+
+    private RemarkDO findFirstLevelRemark(RemarkDO remark) {
+
+        if (Boolean.FALSE.equals(remark.getIsReply()) || remark.getParentId() == null) {
+            return remark;
+        }
+
+        Optional<RemarkDO> parent = remarkRepository.findById(remark.getParentId());
+        if (parent.isEmpty()) {
+ 
+            log.warn("找不到父评论，parentId: {}", remark.getParentId());
+            return remark;
+        }
+
+        return findFirstLevelRemark(parent.get());
+    }
 
 }

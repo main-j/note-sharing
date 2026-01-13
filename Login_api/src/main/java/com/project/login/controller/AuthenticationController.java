@@ -7,6 +7,7 @@ import com.project.login.model.request.login.RegisterRequest;
 import com.project.login.model.request.login.ResetPasswordRequest;
 import com.project.login.service.login.AuthService;
 import com.project.login.service.login.EmailService;
+import com.project.login.service.login.JwtService;
 import com.project.login.service.login.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,12 +31,21 @@ public class AuthenticationController {
     private final AuthService authService;
     private final UserService userService;
     private final EmailService emailService;
+    private final JwtService jwtService;
 
-    // --- 1) 登录 ---
+    // --- 1.1) 登录 ---
     @Operation(summary = "User login")
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
         Map<String, String> token = authService.login(request);
+        return ResponseEntity.ok(token);
+    }
+
+    // --- 1.2) 管理员登录 ---
+    @Operation(summary = "Admin login")
+    @PostMapping("/admin/login")
+    public ResponseEntity<?> adminLogin(@Valid @RequestBody LoginRequest request) {
+        Map<String, String> token = authService.adminLogin(request);
         return ResponseEntity.ok(token);
     }
 
@@ -84,7 +94,7 @@ public class AuthenticationController {
         String token = authorizationHeader.substring(7);
 
         try {
-            UserEntity user = authService.getUserByToken(token);
+            UserEntity user = jwtService.getUserByToken(token);
 
             if (user == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "Token 无效或已过期"));
@@ -96,6 +106,7 @@ public class AuthenticationController {
                     "email", user.getEmail(),
                     "studentNumber", user.getStudentNumber() == null ? "" : user.getStudentNumber(), // 防止 null
                     "enabled", user.isEnabled(),
+                    "role", user.getRole() != null ? user.getRole() : "User", // 用户角色
                     "avatarUrl", user.getAvatarUrl() == null ? "" : user.getAvatarUrl() // 添加头像URL
             );
 
@@ -120,7 +131,7 @@ public class AuthenticationController {
         String token = authorizationHeader.substring(7);
 
         try {
-            UserEntity user = authService.getUserByToken(token);
+            UserEntity user = jwtService.getUserByToken(token);
             if (user == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "Token 无效或已过期"));
             }
@@ -153,6 +164,7 @@ public class AuthenticationController {
                     "username", user.getUsername(),
                     "email", user.getEmail(),
                     "studentNumber", user.getStudentNumber() == null ? "" : user.getStudentNumber(),
+                    "role", user.getRole() != null ? user.getRole() : "User", // 用户角色
                     "avatarUrl", user.getAvatarUrl() == null ? "" : user.getAvatarUrl()
             );
 
@@ -178,6 +190,7 @@ public class AuthenticationController {
                     "username", user.getUsername(),
                     "email", user.getEmail(),
                     "studentNumber", user.getStudentNumber() == null ? "" : user.getStudentNumber(),
+                    "role", user.getRole() != null ? user.getRole() : "User", // 用户角色
                     "avatarUrl", user.getAvatarUrl() == null ? "" : user.getAvatarUrl()
             );
 
@@ -211,7 +224,7 @@ public class AuthenticationController {
         }
 
         try {
-            UserEntity user = authService.getUserByToken(token);
+            UserEntity user = jwtService.getUserByToken(token);
             if (user == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "Token 无效或已过期"));
             }

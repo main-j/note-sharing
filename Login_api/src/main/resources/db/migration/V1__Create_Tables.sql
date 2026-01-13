@@ -6,8 +6,9 @@ CREATE TABLE IF NOT EXISTS users
     enabled             BOOLEAN NOT NULL DEFAULT FALSE, -- 邮箱验证后为 true
     studentNumber       VARCHAR(255) NOT NULL UNIQUE, -- 学号
     email               VARCHAR(255) NOT NULL UNIQUE,
+    role                VARCHAR(50)  NOT NULL DEFAULT 'User',
     created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     avatar_url          VARCHAR(500)
 )ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

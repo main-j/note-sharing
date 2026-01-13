@@ -1,7 +1,11 @@
 package com.project.login.config;
 
+import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -25,6 +29,12 @@ public class RabbitConfig {
         RabbitTemplate template = new RabbitTemplate(connectionFactory);
         template.setMessageConverter(jacksonMessageConverter()); // 使用 JSON
         return template;
+    }
+
+    // --- RabbitAdmin ---
+    @Bean
+    public RabbitAdmin rabbitAdmin(CachingConnectionFactory connectionFactory) {
+        return new RabbitAdmin(connectionFactory);
     }
 
     // --- JSON 消息转换器 ---
@@ -67,5 +77,33 @@ public class RabbitConfig {
     @Bean
     public Queue remarkLikeCountQueue() {
         return new Queue("remarkLikeCount.redis.queue", true);
+    }
+
+    public static final String ACTIVE_TOKEN_QUEUE = "active.token.queue";
+    @Bean
+    public Queue activeTokenQueue() {
+        return new Queue(ACTIVE_TOKEN_QUEUE, true);
+    }
+
+    @Bean
+    public Queue noteAuditQueue() {
+        return new Queue("note.audit.queue", true);
+    }
+
+    @Bean
+    public Queue noteModerationAlertQueue() {
+        return new Queue("note.moderation.alert.queue", true);
+    }
+
+    @Bean
+    public SimpleRabbitListenerContainerFactory auditListenerFactory(ConnectionFactory connectionFactory,
+                                                                     Jackson2JsonMessageConverter converter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setAcknowledgeMode(AcknowledgeMode.AUTO);
+        factory.setPrefetchCount(1);
+        factory.setDefaultRequeueRejected(false);
+        factory.setMessageConverter(converter);
+        return factory;
     }
 }
