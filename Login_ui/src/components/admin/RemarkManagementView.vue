@@ -37,7 +37,7 @@
             <td>{{ remark.noteId || '-' }}</td>
             <td>{{ formatTime(remark.createdAt || remark.createTime) }}</td>
             <td>
-              <button class="action-btn" @click="viewNote(remark.noteId)">查看笔记</button>
+              <button class="action-btn view-note-btn" @click="viewNote(remark.noteId)">查看笔记</button>
               <button class="action-btn view-tree-btn" @click="viewCommentTree(remark)">查看评论树</button>
               <button class="action-btn delete-btn" @click="handleDeleteRemark(remark)">删除</button>
             </td>
@@ -505,6 +505,16 @@ onUnmounted(() => {
 
 .action-btn.delete-btn:hover {
   background: #dc3545;
+  color: white;
+}
+
+.action-btn.view-note-btn {
+  border-color: #007FFF;
+  color: #007FFF;
+}
+
+.action-btn.view-note-btn:hover {
+  background: #007FFF;
   color: white;
 }
 
