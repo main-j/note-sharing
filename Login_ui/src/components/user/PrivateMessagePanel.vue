@@ -237,6 +237,7 @@ const peerUserInfoMap = ref({}) // 存储对方用户的详细信息 {userId: {u
 let stompClient = null
 const subscriptionMap = new Map()
 const pendingSends = new Map() // 记录待确认的发送消息
+let mutualFollowRefreshTimer = null // 定期刷新互相关注用户列表的定时器
 
 const sortedConversations = computed(() => {
   return [...conversations.value].sort((a, b) => {
@@ -789,7 +790,24 @@ watch(
       // 如果会话列表为空，加载互相关注用户列表
       await loadMutualFollowUsers()
       ensureStompClient()
+      
+      // 启动定期刷新互相关注用户列表（每10秒刷新一次）
+      if (mutualFollowRefreshTimer) {
+        clearInterval(mutualFollowRefreshTimer)
+      }
+      mutualFollowRefreshTimer = setInterval(async () => {
+        if (props.visible) {
+          // 刷新会话列表和互相关注用户列表
+          await loadConversations()
+          await loadMutualFollowUsers()
+        }
+      }, 10000) // 每10秒刷新一次
     } else {
+      // 关闭面板时清理定时器
+      if (mutualFollowRefreshTimer) {
+        clearInterval(mutualFollowRefreshTimer)
+        mutualFollowRefreshTimer = null
+      }
       disconnectStomp()
       currentConversationId.value = null
       currentPeerId.value = null
@@ -823,6 +841,11 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  // 清理定时器
+  if (mutualFollowRefreshTimer) {
+    clearInterval(mutualFollowRefreshTimer)
+    mutualFollowRefreshTimer = null
+  }
   disconnectStomp()
 })
 </script>
