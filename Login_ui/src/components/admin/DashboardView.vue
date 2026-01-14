@@ -4,7 +4,9 @@
     
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-icon">👥</div>
+        <div class="stat-icon">
+          <img src="/assets/icons/icon-users.svg" alt="在线用户" />
+        </div>
         <div class="stat-content">
           <div class="stat-value">{{ onlineCount }}</div>
           <div class="stat-label">当前在线用户</div>
@@ -12,7 +14,9 @@
       </div>
       
       <div class="stat-card">
-        <div class="stat-icon">📝</div>
+        <div class="stat-icon">
+          <img src="/assets/icons/icon-note.svg" alt="笔记" />
+        </div>
         <div class="stat-content">
           <div class="stat-value">{{ noteCount }}</div>
           <div class="stat-label">笔记总数</div>
@@ -20,7 +24,9 @@
       </div>
       
       <div class="stat-card">
-        <div class="stat-icon">💬</div>
+        <div class="stat-icon">
+          <img src="/assets/icons/icon-comment.svg" alt="评论" />
+        </div>
         <div class="stat-content">
           <div class="stat-value">{{ remarkCount }}</div>
           <div class="stat-label">评论总数</div>
@@ -28,7 +34,9 @@
       </div>
       
       <div class="stat-card">
-        <div class="stat-icon">❓</div>
+        <div class="stat-icon">
+          <img src="/assets/icons/icon-question.svg" alt="问题" />
+        </div>
         <div class="stat-content">
           <div class="stat-value">{{ questionCount }}</div>
           <div class="stat-label">问题总数</div>
@@ -36,7 +44,9 @@
       </div>
       
       <div class="stat-card">
-        <div class="stat-icon">⚠️</div>
+        <div class="stat-icon">
+          <img src="/assets/icons/icon-warning.svg" alt="待审查" />
+        </div>
         <div class="stat-content">
           <div class="stat-value">{{ pendingModerationCount }}</div>
           <div class="stat-label">待审查内容</div>
@@ -154,7 +164,6 @@ onUnmounted(() => {
 }
 
 .stat-icon {
-  font-size: 40px;
   width: 60px;
   height: 60px;
   display: flex;
@@ -163,6 +172,12 @@ onUnmounted(() => {
   background: #f0f7ff;
   border-radius: 12px;
   flex-shrink: 0;
+}
+
+.stat-icon img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .stat-content {

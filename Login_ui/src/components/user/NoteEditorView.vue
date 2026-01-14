@@ -31,7 +31,20 @@
               @click="selectNote(note)"
           >
             <div class="note-item">
-              <span class="file-icon" :title="note.type === 'pdf' ? 'PDF文件' : '富文本'">{{ note.type === 'pdf' ? '📄' : '📝' }}</span>
+              <img 
+                v-if="note.type === 'pdf'"
+                src="/assets/icons/icon-file-pdf.svg" 
+                alt="PDF文件" 
+                class="file-icon" 
+                :title="'PDF文件'"
+              />
+              <img 
+                v-else
+                src="/assets/icons/icon-file-text.svg" 
+                alt="富文本" 
+                class="file-icon" 
+                :title="'富文本'"
+              />
               <div class="note-info">
                 <p class="note-title">{{ note.title || '无标题笔记' }}</p>
                 <div class="note-meta-new-style">
@@ -2122,7 +2135,10 @@ const isNoteUnderModeration = async (noteId) => {
 }
 
 .file-icon {
-  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  object-fit: contain;
   color: #4c7cff;
 }
 

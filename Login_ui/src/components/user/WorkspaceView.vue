@@ -15,7 +15,7 @@
             @contextmenu.prevent="showWorkspaceContext(ws, $event)"
         >
           <div class="workspace-item">
-            <span class="icon">📁</span>
+            <img src="/assets/icons/icon-folder.svg" alt="笔记空间" class="icon" />
             <div class="ws-info">
               <p class="name">{{ ws.name }}</p>
               <p class="tags">标签：{{ ws.tagName || '无' }}</p>
@@ -50,7 +50,7 @@
               @contextmenu.prevent="showNotebookContext(nb, $event)"
           >
             <div class="notebook-item">
-              <span class="icon">📘</span>
+              <img src="/assets/icons/icon-notebook.svg" alt="笔记本" class="icon" />
               <div>
                 <p class="name">{{ nb.name }}</p>
                 <p class="tags-and-time">
@@ -567,6 +567,7 @@ const confirmDialog = async () => {
 .workspace-list li { list-style: none; padding: 10px; border-radius: 6px; cursor: pointer; margin-bottom: 4px; }
 .workspace-list li.active, .workspace-list li:hover { background: #eef2ff; }
 .workspace-item { display: flex; justify-content: space-between; align-items: center; }
+.workspace-item .icon { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; }
 .ws-info { flex: 1; margin-left: 8px; }
 .ws-info .tags { font-size: 12px; color: #38761d; margin: 2px 0 2px 0; }
 .ws-info .date { font-size: 12px; color: #999; }
@@ -580,6 +581,7 @@ const confirmDialog = async () => {
 .notebook-list li { padding: 10px 15px; border-radius: 6px; cursor: pointer; margin-bottom: 8px; background: #f8f8f8; transition: background 0.2s; }
 .notebook-list li:hover { background: #eee; }
 .notebook-item { display: flex; align-items: center; justify-content: space-between; }
+.notebook-item .icon { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; }
 .notebook-item > div { flex: 1; margin-left: 10px; }
 .notebook-item .name { font-weight: bold; }
 .notebook-item .tags-and-time { font-size: 12px; color: #666; margin-top: 4px; }

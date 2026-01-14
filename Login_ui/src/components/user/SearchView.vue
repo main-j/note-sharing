@@ -7,10 +7,11 @@
           :class="['type-btn', { active: searchType === 'notes' }]"
           @click="switchSearchType('notes')"
         >
-          <svg class="type-icon" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2.5 1A1.5 1.5 0 001 2.5v11A1.5 1.5 0 002.5 15h6.086a1.5 1.5 0 001.06-.44l4.915-4.914A1.5 1.5 0 0015 7.586V2.5A1.5 1.5 0 0013.5 1h-11zM2 2.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v7.086a.5.5 0 01-.146.353l-4.915 4.915a.5.5 0 01-.353.146H2.5a.5.5 0 01-.5-.5v-11z"/>
-            <path d="M5.5 6a.5.5 0 000 1h5a.5.5 0 000-1h-5zM5 8.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5z"/>
-          </svg>
+          <img
+            src="/assets/icons/icon-note.svg"
+            alt="笔记"
+            class="type-icon"
+          />
           笔记
         </button>
         <button
@@ -729,6 +730,7 @@ onMounted(() => {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  object-fit: contain;
 }
 
 .results-header {

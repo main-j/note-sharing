@@ -27,7 +27,11 @@
             @keyup.enter="handleSearch"
         />
         <button class="search-button" type="button" aria-label="搜索" @click="handleSearch">
-          <span class="search-icon">🔍</span>
+          <img
+            src="/assets/icons/icon-search.svg"
+            alt="搜索"
+            class="search-icon"
+          />
         </button>
       </div>
 
@@ -1212,8 +1216,10 @@ onBeforeUnmount(() => {
 }
 
 .search-icon {
-  font-size: 16px;
+  width: 18px;
+  height: 18px;
   color: #8590a6;
+  object-fit: contain;
 }
 
 
