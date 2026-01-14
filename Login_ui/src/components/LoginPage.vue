@@ -25,7 +25,7 @@
       :message="toastMessage"
       :type="toastType"
       :redirect-to="toastRedirect"
-      :duration="2000"
+      :duration="1200"
       @close="showToast = false"
     />
   </div>

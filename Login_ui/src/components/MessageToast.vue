@@ -50,7 +50,7 @@ const props = defineProps({
   },
   duration: {
     type: Number,
-    default: 2000 // 默认2秒后跳转
+    default: 1200 // 默认1.2秒后跳转
   },
   redirectTo: {
     type: [String, Object],
@@ -119,18 +119,21 @@ const startCountdown = () => {
   // 确认对话框不自动关闭
   if (props.type === 'confirm' || !props.autoClose) return
   
-  const duration = props.duration || 2000
-  countdown.value = Math.ceil(duration / 1000)
-  
-  if (props.redirectTo) {
-    // 有跳转路径时显示倒计时
-    countdownTimer = setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) {
-        clearTimers()
-        handleRedirect()
-      }
-    }, 1000)
+  const duration = props.duration || 1200
+  // 如果时间小于等于1.5秒，不显示倒计时文字
+  if (duration > 1500) {
+    countdown.value = Math.ceil(duration / 1000)
+    
+    if (props.redirectTo) {
+      // 有跳转路径时显示倒计时
+      countdownTimer = setInterval(() => {
+        countdown.value--
+        if (countdown.value <= 0) {
+          clearTimers()
+          handleRedirect()
+        }
+      }, 1000)
+    }
   }
   
   // 无论是否有跳转，都设置自动关闭
@@ -193,12 +196,13 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(3px);
+  transition: background 0.2s ease, backdrop-filter 0.2s ease;
 }
 
 .message-toast {
@@ -212,7 +216,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   position: relative;
-  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   border: 1px solid var(--line-soft);
 }
 
@@ -342,7 +346,7 @@ onUnmounted(() => {
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.95);
+    transform: translateY(15px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -352,7 +356,7 @@ onUnmounted(() => {
 
 .toast-enter-active,
 .toast-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .toast-enter-from,
@@ -362,12 +366,16 @@ onUnmounted(() => {
 
 .toast-enter-active .message-toast,
 .toast-leave-active .message-toast {
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.toast-enter-from .message-toast,
+.toast-enter-from .message-toast {
+  transform: translateY(15px) scale(0.96);
+  opacity: 0;
+}
+
 .toast-leave-to .message-toast {
-  transform: translateY(20px) scale(0.95);
+  transform: translateY(-10px) scale(0.98);
   opacity: 0;
 }
 </style>
