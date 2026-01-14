@@ -3,6 +3,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import request from '../api/request'
 import AuthView from '../views/AuthView.vue'
+import PortalView from '../views/PortalView.vue'
 import MainView from '../views/MainView.vue'
 import AdminAuthView from '../views/AdminAuthView.vue'
 import AdminMainView from '../views/AdminMainView.vue'
@@ -10,7 +11,7 @@ import AdminUserInfoView from '../views/AdminUserInfoView.vue'
 import { useUserStore } from '@/stores/user' // 导入 Pinia Store
 
 const routes = [
-  { path: '/', redirect: '/login' },
+  { path: '/', name: 'Portal', component: PortalView },
   { path: '/login', name: 'Login', component: AuthView },
   { path: '/register', name: 'Register', component: AuthView },
   { path: '/forgot-password', name: 'ForgotPassword', component: AuthView },
