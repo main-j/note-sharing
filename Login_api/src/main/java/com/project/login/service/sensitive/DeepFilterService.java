@@ -174,6 +174,11 @@ public class DeepFilterService {
     }
 
     // --- 辅助逻辑 ---
+    
+    /**
+     * 将敏感词添加到Trie树中
+     * 构建从根节点到叶节点的路径，标记叶节点为结束节点
+     **/
 
     private void addWordToTree(TrieNode root, String word) {
         TrieNode node = root;
