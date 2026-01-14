@@ -410,7 +410,11 @@
       :message="toastMessage"
       :type="toastType"
       :duration="toastDuration"
+      :auto-close="toastType !== 'confirm'"
+      :show-close="toastType !== 'confirm'"
       @close="hideMessage"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
     />
   </div>
 </template>
@@ -503,7 +507,7 @@ const riskResultDialog = ref({
 });
 
 // 消息提示
-const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, showInfo, hideMessage } = useMessage()
+const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, showInfo, showConfirm, handleConfirm: handleConfirmCallback, handleCancel: handleCancelCallback, hideMessage } = useMessage()
 
 // 辅助函数：检查是否是重名错误
 const isDuplicateTitleError = (error) => {
@@ -847,6 +851,14 @@ const simulateCheckProgress = (checkPromise) => {
 /**
  * 发布笔记（带敏感词检测）
  */
+const handleConfirm = () => {
+  handleConfirmCallback()
+}
+
+const handleCancel = () => {
+  handleCancelCallback()
+}
+
 const handlePublishNote = async () => {
   if (!currentNote.value) {
     showError('请先选择一个笔记！');
@@ -854,8 +866,13 @@ const handlePublishNote = async () => {
   }
 
   // 确认发布
-  if (!confirm('确定要发布这篇笔记吗？发布后笔记将对其他用户可见。')) {
-    return;
+  try {
+    const confirmed = await showConfirm('确定要发布这篇笔记吗？发布后笔记将对其他用户可见。')
+    if (!confirmed) {
+      return
+    }
+  } catch {
+    return
   }
 
   try {

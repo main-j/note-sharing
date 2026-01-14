@@ -111,6 +111,19 @@
         </div>
       </div>
     </div>
+
+    <!-- 消息提示组件 -->
+    <MessageToast
+      v-if="showToast"
+      :message="toastMessage"
+      :type="toastType"
+      :duration="toastDuration"
+      :auto-close="toastType !== 'confirm'"
+      :show-close="toastType !== 'confirm'"
+      @close="hideMessage"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 
@@ -120,6 +133,8 @@ import { getRemarkCount, getRemarkList, adminDeleteRemark } from '../../api/admi
 import { getRemarkTree } from '../../api/remark'
 import CommentItem from '../user/CommentItem.vue'
 import { useUserStore } from '@/stores/user'
+import MessageToast from '../MessageToast.vue'
+import { useMessage } from '../../utils/message'
 
 const userStore = useUserStore()
 
@@ -235,7 +250,7 @@ const viewNote = (noteId) => {
 const handleDeleteRemark = async (remark) => {
   const remarkId = remark.id || remark.remarkId || remark._id
   if (!remarkId) {
-    alert('评论ID不存在，无法删除')
+    showError('评论ID不存在，无法删除')
     return
   }
 
@@ -265,16 +280,19 @@ const handleDeleteRemark = async (remark) => {
 
   const childCountText = childCount > 0 ? `\n⚠️ 注意：此评论下有 ${childCount} 条子评论，删除时将一并删除！` : ''
   
-  const confirmed = window.confirm(
-    `确定要删除这条评论吗？\n\n` +
-    `评论ID: ${remarkId}\n` +
-    `内容: ${(remark.content || remark.text || '').substring(0, 50)}${(remark.content || remark.text || '').length > 50 ? '...' : ''}\n` +
-    `作者: ${remark.authorName || remark.username || '未知'}` +
-    childCountText +
-    `\n\n删除后无法恢复！`
-  )
-
-  if (!confirmed) return
+  try {
+    const confirmed = await showConfirm(
+      `确定要删除这条评论吗？\n\n` +
+      `评论ID: ${remarkId}\n` +
+      `内容: ${(remark.content || remark.text || '').substring(0, 50)}${(remark.content || remark.text || '').length > 50 ? '...' : ''}\n` +
+      `作者: ${remark.authorName || remark.username || '未知'}` +
+      childCountText +
+      `\n\n删除后无法恢复！`
+    )
+    if (!confirmed) return
+  } catch {
+    return
+  }
 
   try {
     loading.value = true
@@ -284,15 +302,15 @@ const handleDeleteRemark = async (remark) => {
       const successMsg = childCount > 0 
         ? `删除成功！已删除评论及其 ${childCount} 条子评论。`
         : '删除成功！'
-      alert(successMsg)
+      showSuccess(successMsg)
       // 重新加载评论列表
       await loadRemarks(true) // 保持当前页码
     } else {
-      alert('删除失败：' + (result?.message || '未知错误'))
+      showError('删除失败：' + (result?.message || '未知错误'))
     }
   } catch (error) {
     console.error('删除评论失败:', error)
-    alert('删除失败：' + (error.response?.data?.message || error.message || '请稍后重试'))
+    showError('删除失败：' + (error.response?.data?.message || error.message || '请稍后重试'))
   } finally {
     loading.value = false
   }
@@ -301,7 +319,7 @@ const handleDeleteRemark = async (remark) => {
 const viewCommentTree = async (remark) => {
   const remarkId = remark.id || remark.remarkId || remark._id
   if (!remarkId) {
-    alert('评论ID不存在，无法查看评论树')
+    showError('评论ID不存在，无法查看评论树')
     return
   }
 
@@ -318,7 +336,7 @@ const viewCommentTree = async (remark) => {
     commentTree.value = tree?.data || tree || null
   } catch (error) {
     console.error('加载评论树失败:', error)
-    alert('加载评论树失败：' + (error.response?.data?.message || error.message || '请稍后重试'))
+    showError('加载评论树失败：' + (error.response?.data?.message || error.message || '请稍后重试'))
     commentTree.value = null
   } finally {
     treeLoading.value = false

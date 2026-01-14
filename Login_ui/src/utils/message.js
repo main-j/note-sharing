@@ -4,10 +4,10 @@ import { ref } from 'vue'
  * 消息提示 composable
  * 使用方式：
  * import { useMessage } from '@/utils/message'
- * const { showMessage, showSuccess, showError, showInfo } = useMessage()
+ * const { showMessage, showSuccess, showError, showInfo, showConfirm } = useMessage()
  * 
  * 在模板中：
- * <MessageToast v-if="showToast" :message="toastMessage" :type="toastType" ... />
+ * <MessageToast v-if="showToast" :message="toastMessage" :type="toastType" @confirm="handleConfirm" @cancel="handleCancel" ... />
  */
 export const useMessage = () => {
   const showToast = ref(false)
@@ -15,6 +15,8 @@ export const useMessage = () => {
   const toastType = ref('success')
   const toastRedirect = ref(null)
   const toastDuration = ref(2000)
+  let confirmResolve = null
+  let confirmReject = null
 
   const showMessage = (message, type = 'success', redirectTo = null, duration = 2000) => {
     toastMessage.value = message
@@ -36,6 +38,30 @@ export const useMessage = () => {
     showMessage(message, 'info', null, duration)
   }
 
+  // 显示确认对话框，返回 Promise
+  const showConfirm = (message) => {
+    return new Promise((resolve) => {
+      confirmResolve = resolve
+      showMessage(message, 'confirm', null, 0)
+    })
+  }
+
+  const handleConfirm = () => {
+    if (confirmResolve) {
+      confirmResolve(true)
+      confirmResolve = null
+    }
+    hideMessage()
+  }
+
+  const handleCancel = () => {
+    if (confirmResolve) {
+      confirmResolve(false)
+      confirmResolve = null
+    }
+    hideMessage()
+  }
+
   const hideMessage = () => {
     showToast.value = false
   }
@@ -50,6 +76,9 @@ export const useMessage = () => {
     showSuccess,
     showError,
     showInfo,
+    showConfirm,
+    handleConfirm,
+    handleCancel,
     hideMessage
   }
 }

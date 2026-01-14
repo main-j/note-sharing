@@ -122,7 +122,11 @@
       :message="toastMessage"
       :type="toastType"
       :duration="toastDuration"
+      :auto-close="toastType !== 'confirm'"
+      :show-close="toastType !== 'confirm'"
       @close="hideMessage"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
     />
   </div>
 </template>
@@ -145,7 +149,7 @@ const route = useRoute()
 const userStore = useUserStore()
 
 // 消息提示
-const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, hideMessage } = useMessage()
+const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, showConfirm, handleConfirm: handleConfirmCallback, handleCancel: handleCancelCallback, hideMessage } = useMessage()
 
 // 标签页配置
 const tabs = [
@@ -400,8 +404,12 @@ const handleCreateQuestion = async () => {
 const handleDeleteQuestion = async (item) => {
   if (!item || !item.questionId) return
   
-  const confirmed = window.confirm('确定要删除这个问题吗？删除后无法恢复。')
-  if (!confirmed) return
+  try {
+    const confirmed = await showConfirm('确定要删除这个问题吗？删除后无法恢复。')
+    if (!confirmed) return
+  } catch {
+    return
+  }
   
   const userId = userStore.userInfo?.id
   if (!userId) {

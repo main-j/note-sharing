@@ -181,6 +181,19 @@
         </button>
       </div>
     </div>
+
+    <!-- 消息提示组件 -->
+    <MessageToast
+      v-if="showToast"
+      :message="toastMessage"
+      :type="toastType"
+      :duration="toastDuration"
+      :auto-close="toastType !== 'confirm'"
+      :show-close="toastType !== 'confirm'"
+      @close="hideMessage"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 
@@ -188,6 +201,8 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { getQuestionCount, getQuestionList, adminDeleteQuestion, getAnswerCount } from '../../api/admin'
 import { searchQuestions, deleteAnswer, deleteComment, deleteReply } from '../../api/qa'
+import MessageToast from '../MessageToast.vue'
+import { useMessage } from '../../utils/message'
 
 const questionCount = ref(0)
 const answerCount = ref(0)
@@ -200,6 +215,20 @@ const searchQuery = ref('')
 const isSearching = ref(false)
 const searchTimeout = ref(null)
 const expandedQuestions = ref(new Set())
+
+// 消息提示
+const {
+  showToast,
+  toastMessage,
+  toastType,
+  toastDuration,
+  showSuccess,
+  showError,
+  showConfirm,
+  handleConfirm: handleConfirmCallback,
+  handleCancel: handleCancelCallback,
+  hideMessage
+} = useMessage()
 
 // 计算总页数
 const totalPages = computed(() => {
@@ -308,7 +337,7 @@ const viewQuestion = (question) => {
 const handleDeleteQuestion = async (question) => {
   const questionId = question.questionId
   if (!questionId) {
-    alert('问题ID不存在')
+    showError('问题ID不存在')
     return
   }
   
@@ -318,18 +347,27 @@ const handleDeleteQuestion = async (question) => {
     `此问题下有 ${answerCount} 个回答，删除时将一并删除所有回答、评论和回复。\n\n` +
     `此操作不可恢复！`
   
-  if (!confirm(confirmMessage)) {
-    return
-  }
-  
   try {
+    const confirmed = await showConfirm(confirmMessage)
+    if (!confirmed) {
+      return
+    }
+    
     await adminDeleteQuestion(questionId)
-    alert('删除成功')
+    showSuccess('删除成功')
     await loadQuestions(true)
   } catch (error) {
     console.error('删除问题失败:', error)
-    alert('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
+    showError('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
   }
+}
+
+const handleConfirm = () => {
+  handleConfirmCallback()
+}
+
+const handleCancel = () => {
+  handleCancelCallback()
 }
 
 const handleDeleteAnswer = async (questionId, answer) => {
@@ -343,17 +381,18 @@ const handleDeleteAnswer = async (questionId, answer) => {
     (commentCount > 0 ? `\n⚠️ 注意：此回答下有 ${commentCount} 条评论，删除时将一并删除！\n` : '') +
     `\n删除后无法恢复！`
   
-  if (!confirm(confirmMessage)) {
-    return
-  }
-  
   try {
+    const confirmed = await showConfirm(confirmMessage)
+    if (!confirmed) {
+      return
+    }
+    
     await deleteAnswer(questionId, answerId)
-    alert(commentCount > 0 ? `删除成功！已删除回答及其 ${commentCount} 条评论。` : '删除成功！')
+    showSuccess(commentCount > 0 ? `删除成功！已删除回答及其 ${commentCount} 条评论。` : '删除成功！')
     await loadQuestions(true)
   } catch (error) {
     console.error('删除回答失败:', error)
-    alert('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
+    showError('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
   }
 }
 
@@ -368,17 +407,18 @@ const handleDeleteComment = async (questionId, answerId, comment) => {
     (replyCount > 0 ? `\n⚠️ 注意：此评论下有 ${replyCount} 条回复，删除时将一并删除！\n` : '') +
     `\n删除后无法恢复！`
   
-  if (!confirm(confirmMessage)) {
-    return
-  }
-  
   try {
+    const confirmed = await showConfirm(confirmMessage)
+    if (!confirmed) {
+      return
+    }
+    
     await deleteComment(questionId, answerId, commentId)
-    alert(replyCount > 0 ? `删除成功！已删除评论及其 ${replyCount} 条回复。` : '删除成功！')
+    showSuccess(replyCount > 0 ? `删除成功！已删除评论及其 ${replyCount} 条回复。` : '删除成功！')
     await loadQuestions(true)
   } catch (error) {
     console.error('删除评论失败:', error)
-    alert('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
+    showError('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
   }
 }
 
@@ -391,17 +431,18 @@ const handleDeleteReply = async (questionId, answerId, commentId, reply) => {
     `内容: ${(reply.content || '').substring(0, 50)}${(reply.content || '').length > 50 ? '...' : ''}\n` +
     `\n删除后无法恢复！`
   
-  if (!confirm(confirmMessage)) {
-    return
-  }
-  
   try {
+    const confirmed = await showConfirm(confirmMessage)
+    if (!confirmed) {
+      return
+    }
+    
     await deleteReply(questionId, answerId, commentId, replyId)
-    alert('删除成功！')
+    showSuccess('删除成功！')
     await loadQuestions(true)
   } catch (error) {
     console.error('删除回复失败:', error)
-    alert('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
+    showError('删除失败：' + (error.response?.data?.message || error.message || '未知错误'))
   }
 }
 

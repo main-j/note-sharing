@@ -10,16 +10,24 @@
             <svg v-else-if="type === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-else-if="type === 'info'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 16v-4M12 8h.01" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <svg v-else-if="type === 'confirm'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
               <circle cx="12" cy="12" r="10"/>
             </svg>
           </div>
           <div class="toast-content">
-            <p class="toast-message">{{ message }}</p>
+            <p class="toast-message" v-html="formattedMessage"></p>
             <p v-if="countdown > 0 && redirectTo" class="toast-countdown">{{ countdown }}秒后自动跳转...</p>
           </div>
-          <button v-if="showClose" class="toast-close" @click="handleClose">×</button>
+          <button v-if="showClose && type !== 'confirm'" class="toast-close" @click="handleClose">×</button>
+          <div v-if="type === 'confirm'" class="toast-actions">
+            <button class="toast-btn toast-btn-cancel" @click="handleCancel">取消</button>
+            <button class="toast-btn toast-btn-confirm" @click="handleConfirm">确认</button>
+          </div>
         </div>
       </div>
     </Transition>
@@ -27,7 +35,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -37,8 +45,8 @@ const props = defineProps({
   },
   type: {
     type: String,
-    default: 'success', // success, error, info
-    validator: (value) => ['success', 'error', 'info'].includes(value)
+    default: 'success', // success, error, info, confirm
+    validator: (value) => ['success', 'error', 'info', 'confirm'].includes(value)
   },
   duration: {
     type: Number,
@@ -55,10 +63,14 @@ const props = defineProps({
   autoClose: {
     type: Boolean,
     default: true // 是否自动关闭并跳转
+  },
+  isConfirm: {
+    type: Boolean,
+    default: false // 是否为确认对话框
   }
 })
 
-const emit = defineEmits(['close', 'redirect'])
+const emit = defineEmits(['close', 'redirect', 'confirm', 'cancel'])
 
 const visible = ref(false)
 const countdown = ref(0)
@@ -72,6 +84,26 @@ const handleClose = () => {
   emit('close')
 }
 
+const handleConfirm = () => {
+  visible.value = false
+  clearTimers()
+  emit('confirm')
+  emit('close')
+}
+
+const handleCancel = () => {
+  visible.value = false
+  clearTimers()
+  emit('cancel')
+  emit('close')
+}
+
+// 格式化消息，将 \n 转换为 <br>
+const formattedMessage = computed(() => {
+  if (!props.message) return ''
+  return props.message.replace(/\n/g, '<br>')
+})
+
 const clearTimers = () => {
   if (countdownTimer) {
     clearInterval(countdownTimer)
@@ -84,7 +116,8 @@ const clearTimers = () => {
 }
 
 const startCountdown = () => {
-  if (!props.autoClose) return
+  // 确认对话框不自动关闭
+  if (props.type === 'confirm' || !props.autoClose) return
   
   const duration = props.duration || 2000
   countdown.value = Math.ceil(duration / 1000)
@@ -207,6 +240,11 @@ onUnmounted(() => {
   color: #1890ff;
 }
 
+.icon-confirm {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
 .toast-icon svg {
   width: 24px;
   height: 24px;
@@ -257,6 +295,47 @@ onUnmounted(() => {
 .toast-close:hover {
   background: #f5f5f5;
   color: #666;
+}
+
+.toast-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.toast-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toast-btn-cancel {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.toast-btn-cancel:hover {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.toast-btn-confirm {
+  background: #1890ff;
+  color: white;
+}
+
+.toast-btn-confirm:hover {
+  background: #40a9ff;
+}
+
+.toast-confirm .toast-content {
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 @keyframes slideUp {

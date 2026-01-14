@@ -252,6 +252,10 @@
       v-if="showToast"
       :message="toastMessage"
       :type="toastType"
+      :auto-close="toastType !== 'confirm'"
+      :show-close="toastType !== 'confirm'"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
       :duration="toastDuration"
       @close="hideMessage"
     />
@@ -286,7 +290,7 @@ const route = useRoute()
 const userStore = useUserStore()
 
 // 消息提示
-const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, hideMessage } = useMessage()
+const { showToast, toastMessage, toastType, toastDuration, showSuccess, showError, showConfirm, handleConfirm: handleConfirmCallback, handleCancel: handleCancelCallback, hideMessage } = useMessage()
 
 const props = defineProps({
   questionId: {
@@ -664,8 +668,12 @@ const handleLikeReply = async (answer, comment, reply) => {
 
 // 删除回答
 const handleDeleteAnswer = async (answer) => {
-  const confirmed = window.confirm('确定要删除这个回答吗？删除后无法恢复。')
-  if (!confirmed) return
+  try {
+    const confirmed = await showConfirm('确定要删除这个回答吗？删除后无法恢复。')
+    if (!confirmed) return
+  } catch {
+    return
+  }
   
   const userId = userStore.userInfo?.id
   if (!userId) {
@@ -692,8 +700,12 @@ const handleDeleteAnswer = async (answer) => {
 
 // 删除评论
 const handleDeleteComment = async (answer, comment) => {
-  const confirmed = window.confirm('确定要删除这条评论吗？删除后无法恢复。')
-  if (!confirmed) return
+  try {
+    const confirmed = await showConfirm('确定要删除这条评论吗？删除后无法恢复。')
+    if (!confirmed) return
+  } catch {
+    return
+  }
   
   const userId = userStore.userInfo?.id
   if (!userId) {
@@ -720,8 +732,12 @@ const handleDeleteComment = async (answer, comment) => {
 
 // 删除回复
 const handleDeleteReply = async (answer, comment, reply) => {
-  const confirmed = window.confirm('确定要删除这条回复吗？删除后无法恢复。')
-  if (!confirmed) return
+  try {
+    const confirmed = await showConfirm('确定要删除这条回复吗？删除后无法恢复。')
+    if (!confirmed) return
+  } catch {
+    return
+  }
   
   const userId = userStore.userInfo?.id
   if (!userId) {
@@ -746,12 +762,24 @@ const handleDeleteReply = async (answer, comment, reply) => {
   }
 }
 
+const handleConfirm = () => {
+  handleConfirmCallback()
+}
+
+const handleCancel = () => {
+  handleCancelCallback()
+}
+
 // 删除问题
 const handleDeleteQuestion = async () => {
   if (!question.value) return
   
-  const confirmed = window.confirm('确定要删除这个问题吗？删除后无法恢复。')
-  if (!confirmed) return
+  try {
+    const confirmed = await showConfirm('确定要删除这个问题吗？删除后无法恢复。')
+    if (!confirmed) return
+  } catch {
+    return
+  }
   
   const userId = userStore.userInfo?.id
   if (!userId) {
