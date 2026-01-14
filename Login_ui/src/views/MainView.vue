@@ -245,6 +245,7 @@ import {
   markAllNotificationsAsRead
 } from '@/api/notification'
 import { getUserById } from '@/api/follow'
+import { getFileUrlByNoteId } from '@/api/note'
 
 const router = useRouter()
 const route = useRoute()
@@ -366,8 +367,67 @@ const toggleNotificationPanel = async () => {
 const handleNotificationClick = async (item) => {
   if (!item) return
 
+  // 如果是笔记被退回的通知，跳转到笔记编辑页面
+  if (item.type === 'NOTE_MODERATION_REJECTED' && item.targetType === 'NOTE' && item.targetId) {
+    const noteId = Number(item.targetId)
+    if (!Number.isNaN(noteId)) {
+      try {
+        // 获取笔记信息（包含 notebookId 和 spaceId）
+        const noteInfo = await getFileUrlByNoteId(noteId)
+        if (noteInfo && noteInfo.notebookId && noteInfo.spaceId) {
+          // 设置编辑器状态
+          editingNotebookId.value = noteInfo.notebookId
+          editingSpaceId.value = noteInfo.spaceId
+          editingNoteId.value = noteId
+          
+          // 获取笔记本名称和列表
+          try {
+            const userId = userStore.userInfo.id
+            if (userId) {
+              const response = await service.post(`${BASE_PATH}/notebooks/by-space`, {
+                spaceId: noteInfo.spaceId,
+                userId
+              })
+              
+              if (response.data.code === 200 && Array.isArray(response.data.data)) {
+                const notebooks = response.data.data
+                // 找到当前笔记本
+                const currentNotebook = notebooks.find(nb => nb.id === noteInfo.notebookId)
+                if (currentNotebook) {
+                  editingNotebookName.value = currentNotebook.name
+                }
+                editingNotebookList.value = notebooks
+              }
+            }
+          } catch (error) {
+            console.error('获取笔记本列表失败:', error)
+          }
+          
+          // 更新 URL
+          router.replace({
+            path: route.path,
+            query: {
+              ...route.query,
+              tab: 'workspace',
+              notebookId: noteInfo.notebookId,
+              spaceId: noteInfo.spaceId,
+              notebookName: editingNotebookName.value || undefined,
+              noteId: noteId
+            }
+          })
+          currentTab.value = 'workspace'
+        } else {
+          console.error('无法获取笔记的 notebookId 或 spaceId')
+        }
+      } catch (error) {
+        console.error('获取笔记信息失败:', error)
+        // 如果获取失败，回退到详情页
+        handleOpenNoteDetail({ noteId, fromTab: currentTab.value || 'hot' })
+      }
+    }
+  }
   // 根据 targetType 跳转到对应详情页
-  if (item.targetType === 'NOTE' && item.targetId) {
+  else if (item.targetType === 'NOTE' && item.targetId) {
     const noteId = Number(item.targetId)
     if (!Number.isNaN(noteId)) {
       handleOpenNoteDetail({ noteId, fromTab: currentTab.value || 'hot' })

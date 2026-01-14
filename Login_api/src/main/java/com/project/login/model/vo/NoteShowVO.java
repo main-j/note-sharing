@@ -13,6 +13,8 @@ public class NoteShowVO {
 
     private Long notebookId;
 
+    private Long spaceId;  // 笔记空间ID
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     

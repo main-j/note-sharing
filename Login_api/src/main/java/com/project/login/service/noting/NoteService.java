@@ -267,6 +267,11 @@ public class NoteService {
         vo.setUrl(url);
         vo.setFileType(existing.getFileType());
         vo.setNotebookId(existing.getNotebookId());
+        // 获取 spaceId
+        if (existing.getNotebookId() != null) {
+            Long spaceId = notebookMapper.selectSpaceIdByNotebookId(existing.getNotebookId());
+            vo.setSpaceId(spaceId);
+        }
         vo.setCreatedAt(existing.getCreatedAt());
         vo.setUpdatedAt(existing.getUpdatedAt());
         return vo;
