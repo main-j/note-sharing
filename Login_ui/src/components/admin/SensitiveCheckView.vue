@@ -661,7 +661,7 @@ const handleReloadDeepWords = async () => {
   padding: 12px 24px;
   border: none;
   background: transparent;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -670,12 +670,12 @@ const handleReloadDeepWords = async () => {
 }
 
 .tab-btn:hover {
-  color: #007FFF;
+  color: var(--brand-primary);
 }
 
 .tab-btn.active {
-  color: #007FFF;
-  border-bottom-color: #007FFF;
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
   font-weight: 600;
 }
 
@@ -764,7 +764,7 @@ const handleReloadDeepWords = async () => {
 .primary-btn {
   padding: 10px 20px;
   border: none;
-  background: #007FFF;
+  background: var(--brand-primary);
   color: white;
   border-radius: 6px;
   cursor: pointer;
@@ -773,20 +773,12 @@ const handleReloadDeepWords = async () => {
 }
 
 .primary-btn:hover:not(:disabled) {
-  background: #006EDC;
+  background: var(--brand-primary-hover);
 }
 
 .primary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.deep-check-btn {
-  background: #722ed1;
-}
-
-.deep-check-btn:hover:not(:disabled) {
-  background: #5b1fa8;
 }
 
 .result-section {

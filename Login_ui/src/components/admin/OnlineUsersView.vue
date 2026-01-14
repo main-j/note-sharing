@@ -191,7 +191,7 @@ onUnmounted(() => {
 .stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: #007FFF;
+  color: var(--brand-primary);
 }
 
 .table-container {

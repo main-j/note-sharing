@@ -329,8 +329,8 @@ onUnmounted(() => {
 }
 
 .tab-btn.active {
-  background: white;
-  color: #007FFF;
+  background: var(--surface-soft);
+  color: var(--brand-primary);
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }

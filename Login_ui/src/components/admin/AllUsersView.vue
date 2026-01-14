@@ -264,7 +264,7 @@ onMounted(() => {
 .stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: #007FFF;
+  color: var(--brand-primary);
 }
 
 .table-container {
@@ -347,7 +347,7 @@ onMounted(() => {
 }
 
 .email-link {
-  color: #007FFF;
+  color: var(--brand-primary);
   text-decoration: none;
   transition: all 0.2s;
 }
@@ -381,18 +381,20 @@ onMounted(() => {
 
 .page-btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--brand-primary);
   background: white;
-  color: #666;
+  color: var(--brand-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+  outline: none;
 }
 
 .page-btn:hover:not(:disabled) {
-  background: #f5f5f5;
-  border-color: #ccc;
+  background: var(--surface-soft);
+  border-color: var(--brand-primary-hover);
+  color: var(--brand-primary-hover);
 }
 
 .page-btn:disabled {
@@ -409,24 +411,30 @@ onMounted(() => {
   min-width: 36px;
   height: 36px;
   padding: 0 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--brand-primary);
   background: white;
-  color: #666;
+  color: var(--brand-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
 }
 
-.page-number:hover:not(:disabled) {
-  background: #f5f5f5;
-  border-color: #ccc;
+.page-number:hover:not(.active):not(:disabled) {
+  background: var(--surface-soft);
+  border-color: var(--brand-primary-hover);
+  color: var(--brand-primary-hover);
 }
 
 .page-number.active {
-  background: #007FFF;
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
   color: white;
-  border-color: #007FFF;
+  font-weight: 600;
 }
 
 .page-number:disabled {

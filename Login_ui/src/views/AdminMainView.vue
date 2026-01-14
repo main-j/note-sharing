@@ -185,7 +185,7 @@ const handleLogout = () => {
 .admin-main-shell {
   min-height: 100vh;
   padding: 0;
-  background: #f6f6f6;
+  background: transparent;
   display: flex;
   flex-direction: column;
 }
@@ -193,12 +193,19 @@ const handleLogout = () => {
 .admin-header {
   display: flex;
   align-items: center;
-  background: white;
-  padding: 0 20px;
-  height: 60px;
-  border-bottom: 1px solid #ededed;
+  background: var(--surface-base);
+  padding: 0 24px;
+  height: 64px;
+  border-bottom: 1px solid var(--line-soft);
   gap: 24px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1000;
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(10px);
 }
 
 .brand-logo-block {
@@ -207,42 +214,63 @@ const handleLogout = () => {
 
 .brand-logo-text {
   font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 500;
   color: #0a0a0a;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
   text-transform: uppercase;
   user-select: none;
+  cursor: pointer;
+  transition: color 0.3s ease, opacity 0.3s ease;
   opacity: 0.9;
+}
+
+.brand-logo-text:hover {
+  color: var(--brand-primary);
+  opacity: 1;
 }
 
 .admin-nav-links {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 35px;
   flex: 1;
 }
 
 .nav-link-item {
   background: none;
   border: none;
-  padding: 8px 16px;
-  color: #666;
-  font-size: 14px;
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-  border-radius: 6px;
+  transition: all var(--transition-fast);
+  position: relative;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
 }
 
 .nav-link-item:hover {
-  background: #f0f0f0;
-  color: #333;
+  color: var(--text-strong);
+  background: var(--surface-soft);
 }
 
 .nav-link-item.active {
-  color: #007FFF;
+  color: var(--text-strong);
   font-weight: 600;
-  background: #f0f7ff;
+}
+
+.nav-link-item.active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 3px;
+  background-color: var(--brand-primary);
+  border-radius: 2px;
 }
 
 .nav-item-wrapper {
@@ -262,12 +290,6 @@ const handleLogout = () => {
 
 .nav-item-wrapper.has-submenu.active .submenu-arrow {
   transform: rotate(180deg);
-}
-
-.nav-item-wrapper.has-submenu.active .nav-link-item {
-  color: #007FFF;
-  font-weight: 600;
-  background: #f0f7ff;
 }
 
 .submenu {
@@ -303,15 +325,15 @@ const handleLogout = () => {
 }
 
 .submenu-item.active {
-  color: #007FFF;
+  color: var(--brand-primary);
   font-weight: 600;
-  background: #f0f7ff;
+  background: var(--surface-soft);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
 }
 
 .user-info {
@@ -321,14 +343,14 @@ const handleLogout = () => {
 
 .username {
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .logout-btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: white;
-  color: #666;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-base);
+  color: var(--text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
@@ -336,13 +358,14 @@ const handleLogout = () => {
 }
 
 .logout-btn:hover {
-  background: #f5f5f5;
-  border-color: #ccc;
+  background: var(--surface-soft);
+  border-color: var(--brand-primary);
+  color: var(--text-strong);
 }
 
 .admin-content {
   flex: 1;
-  padding: 24px;
+  padding: 88px 24px 24px;
   overflow-y: auto;
 }
 
