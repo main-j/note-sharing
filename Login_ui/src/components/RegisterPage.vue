@@ -213,68 +213,125 @@ onUnmounted(() => {
 <style scoped>
 .form-container {
   width: 100%;
-  max-width: 400px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
 }
+
 h2 {
   text-align: center;
+  margin-bottom: 32px;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
+}
+
+.input-group {
   margin-bottom: 20px;
 }
-.input-group {
-  margin-bottom: 15px;
-}
+
 .input-group label {
   font-size: 14px;
-  margin-bottom: 4px;
+  font-weight: 500;
+  margin-bottom: 8px;
   display: block;
+  color: var(--text-primary);
 }
+
 .input-group input {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--line-soft);
+  border-radius: var(--radius-sm);
   font-size: 15px;
+  color: var(--text-primary);
+  background: var(--surface-base);
+  transition: all var(--transition-base);
+  box-sizing: border-box;
 }
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(34, 191, 163, 0.1);
+}
+
+.input-group input::placeholder {
+  color: var(--text-muted);
+}
+
 .input-with-button {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
+
 .btn-code {
   flex-shrink: 0;
-  padding: 10px 15px;
+  padding: 14px 20px;
   border: none;
-  background-color: #4e54c8;
+  background: var(--brand-primary);
   color: white;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
+  transition: all var(--transition-base);
+  white-space: nowrap;
 }
+
+.btn-code:hover:not(:disabled) {
+  background: var(--brand-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
 .btn-code:disabled {
-  background-color: #999;
+  background: var(--text-disabled);
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .btn {
-  padding: 12px;
-  margin-top: 10px;
+  padding: 14px 24px;
+  margin-top: 8px;
   border: none;
-  background-color: #4e54c8;
+  background: var(--brand-primary);
   color: white;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 16px;
+  font-weight: 500;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-sm);
 }
+
 .btn:hover {
-  background-color: #3c40a8;
+  background: var(--brand-primary-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
+
+.btn:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
+}
+
 .links {
   display: flex;
   justify-content: center;
-  margin-top: 10px;
+  margin-top: 24px;
 }
+
 .links a {
-  color: #4e54c8;
+  color: var(--brand-primary);
   font-size: 14px;
+  font-weight: 500;
+  transition: color var(--transition-fast);
+  text-decoration: none;
+}
+
+.links a:hover {
+  color: var(--brand-primary-hover);
+  text-decoration: none;
 }
 </style>

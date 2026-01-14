@@ -198,21 +198,22 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
 }
 
 .message-toast {
-  background: white;
-  border-radius: 12px;
+  background: var(--surface-base);
+  border-radius: var(--radius-md);
   padding: 24px 32px;
   min-width: 320px;
   max-width: 90%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
   display: flex;
   align-items: center;
   gap: 16px;
   position: relative;
-  animation: slideUp 0.3s ease-out;
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--line-soft);
 }
 
 .toast-icon {
@@ -226,23 +227,23 @@ onUnmounted(() => {
 }
 
 .icon-success {
-  background: #e6f7e6;
-  color: #52c41a;
+  background: rgba(34, 191, 163, 0.1);
+  color: var(--brand-primary);
 }
 
 .icon-error {
-  background: #fff1f0;
-  color: #ff4d4f;
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--feedback-danger);
 }
 
 .icon-info {
-  background: #e6f4ff;
-  color: #1890ff;
+  background: rgba(34, 191, 163, 0.1);
+  color: var(--brand-primary);
 }
 
 .icon-confirm {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: rgba(255, 149, 0, 0.1);
+  color: var(--feedback-warning);
 }
 
 .toast-icon svg {
@@ -261,14 +262,14 @@ onUnmounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-strong);
   line-height: 1.5;
 }
 
 .toast-countdown {
   margin: 0;
   font-size: 13px;
-  color: #999;
+  color: var(--text-muted);
   line-height: 1.4;
 }
 
@@ -276,25 +277,25 @@ onUnmounted(() => {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: transparent;
-  color: #999;
-  font-size: 24px;
+  color: var(--text-muted);
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s;
+  border-radius: var(--radius-xs);
+  transition: all var(--transition-fast);
   padding: 0;
 }
 
 .toast-close:hover {
-  background: #f5f5f5;
-  color: #666;
+  background: var(--surface-soft);
+  color: var(--text-primary);
 }
 
 .toast-actions {
@@ -305,32 +306,32 @@ onUnmounted(() => {
 }
 
 .toast-btn {
-  padding: 8px 24px;
+  padding: 10px 24px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-base);
 }
 
 .toast-btn-cancel {
-  background: #f5f5f5;
-  color: #666;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
 }
 
 .toast-btn-cancel:hover {
-  background: #e8e8e8;
-  color: #333;
+  background: var(--line-soft);
+  color: var(--text-primary);
 }
 
 .toast-btn-confirm {
-  background: #1890ff;
+  background: var(--brand-primary);
   color: white;
 }
 
 .toast-btn-confirm:hover {
-  background: #40a9ff;
+  background: var(--brand-primary-hover);
 }
 
 .toast-confirm .toast-content {
