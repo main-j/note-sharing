@@ -260,13 +260,16 @@ public class NoteService {
     public NoteShowVO getNoteByNoteId(Long noteId) {
         NoteDO existing = noteMapper.selectById(noteId);
         if (existing == null) throw new RuntimeException("笔记不存在");
-        String url = minioservice.getFileUrl(existing.getFilename());
         NoteShowVO vo = new NoteShowVO();
         vo.setId(existing.getId());
         vo.setTitle(existing.getTitle());
-        vo.setUrl(url);
         vo.setFileType(existing.getFileType());
         vo.setNotebookId(existing.getNotebookId());
+        boolean fileExists = existing.getFilename() != null && minioservice.fileExists(existing.getFilename());
+        vo.setFileExists(fileExists);
+        if (fileExists) {
+            vo.setUrl(minioservice.getFileUrl(existing.getFilename()));
+        }
         // 获取 spaceId
         if (existing.getNotebookId() != null) {
             Long spaceId = notebookMapper.selectSpaceIdByNotebookId(existing.getNotebookId());
@@ -442,8 +445,14 @@ public class NoteService {
             vo.setUpdatedAt(noteDO.getUpdatedAt());
             // 获取文件访问URL
             if (noteDO.getFilename() != null && !noteDO.getFilename().isEmpty()) {
-                String url = minioservice.getFileUrl(noteDO.getFilename());
-                vo.setUrl(url);
+                boolean fileExists = minioservice.fileExists(noteDO.getFilename());
+                vo.setFileExists(fileExists);
+                if (fileExists) {
+                    String url = minioservice.getFileUrl(noteDO.getFilename());
+                    vo.setUrl(url);
+                }
+            } else {
+                vo.setFileExists(false);
             }
             // 获取作者信息（用户名和邮箱）
             try {

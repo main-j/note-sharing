@@ -232,7 +232,7 @@ const loadUserNotes = async () => {
 
     // 批量获取没有时间的笔记的时间信息
     if (notes.value.length > 0) {
-      await fetchNoteTimes(notes.value)
+      notes.value = await fetchNoteTimes(notes.value)
     }
   } catch (err) {
     console.error('加载用户公开笔记失败:', err)
@@ -244,7 +244,7 @@ const loadUserNotes = async () => {
 
 // 批量获取笔记时间信息
 const fetchNoteTimes = async (noteList) => {
-  if (!noteList || noteList.length === 0) return
+  if (!noteList || noteList.length === 0) return []
   
   const notesWithoutTime = noteList.filter(note => 
     note.noteId && 
@@ -255,7 +255,7 @@ const fetchNoteTimes = async (noteList) => {
     !note._timeLoading
   )
   
-  if (notesWithoutTime.length === 0) return
+  if (notesWithoutTime.length === 0) return noteList
   
   notesWithoutTime.forEach(note => { note._timeLoading = true })
   
@@ -265,17 +265,20 @@ const fetchNoteTimes = async (noteList) => {
       if (noteInfo) {
         note.updatedAt = noteInfo.updatedAt || noteInfo.createdAt
         note.createdAt = noteInfo.createdAt
+        if (noteInfo.fileExists === false) {
+          note._fileMissing = true
+        }
       }
     } catch (err) {
-      console.warn(`获取笔记 ${note.noteId} 时间失败:`, err)
+      console.warn(`鑾峰彇绗旇 ${note.noteId} 鏃堕棿澶辫触:`, err)
     } finally {
       note._timeLoading = false
     }
   })
   
   await Promise.all(promises)
+  return noteList.filter(item => !item._fileMissing)
 }
-
 // 处理笔记点击
 const handleNoteClick = async (note) => {
   if (!note || !note.noteId) {

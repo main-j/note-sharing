@@ -1,6 +1,7 @@
 package com.project.login.model.vo;
 
 import lombok.Data;
+
 import java.time.LocalDateTime;
 
 @Data
@@ -13,13 +14,13 @@ public class NoteShowVO {
 
     private Long notebookId;
 
-    private Long spaceId;  // 笔记空间ID
+    private Long spaceId;
+
+    private Boolean fileExists;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    
-    // 作者信息
-    private String authorName;  // 用户名
-    private String authorEmail;  // 邮箱
 
+    private String authorName;
+    private String authorEmail;
 }

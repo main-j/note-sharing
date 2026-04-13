@@ -19,6 +19,25 @@ public class MinioService {
 
     private final String bucket = "notesharing";
 
+    public boolean fileExists(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return false;
+        }
+
+        try {
+            minioClient.statObject(
+                    StatObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(fileName)
+                            .build()
+            );
+            return true;
+        } catch (Exception e) {
+            log.warn("MinIO object not found or unavailable: {}", fileName);
+            return false;
+        }
+    }
+
     public String uploadFile(MultipartFile file) {
         try {
             // 处理文件名：移除特殊字符，只保留文件名（不含路径）
@@ -92,6 +111,9 @@ public class MinioService {
     // 获取文件预览 URL（默认 7 天）
     public String getFileUrl(String fileName) {
         try {
+            if (!fileExists(fileName)) {
+                throw new RuntimeException("文件不存在或已被删除: " + fileName);
+            }
             String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)

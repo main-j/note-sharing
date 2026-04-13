@@ -279,9 +279,8 @@ const switchSearchType = (type) => {
 
 // 批量获取笔记时间信息
 const fetchNoteTimes = async (results) => {
-  if (!results || results.length === 0) return
+  if (!results || results.length === 0) return []
   
-  // 找出没有时间的笔记
   const notesWithoutTime = results.filter(r => 
     r.noteId && 
     !r.updatedAt && 
@@ -291,31 +290,31 @@ const fetchNoteTimes = async (results) => {
     !r._timeLoading
   )
   
-  if (notesWithoutTime.length === 0) return
+  if (notesWithoutTime.length === 0) return results
   
-  // 标记为加载中
   notesWithoutTime.forEach(r => { r._timeLoading = true })
   
-  // 批量获取时间信息
   const promises = notesWithoutTime.map(async (result) => {
     try {
       const noteInfo = await getFileUrlByNoteId(result.noteId)
       if (noteInfo) {
-        // 使用updatedAt，如果没有则使用createdAt
         result.updatedAt = noteInfo.updatedAt || noteInfo.createdAt
         result.createdAt = noteInfo.createdAt
+        if (noteInfo.fileExists === false) {
+          result._fileMissing = true
+        }
       }
     } catch (err) {
-      console.warn(`获取笔记 ${result.noteId} 时间失败:`, err)
+      console.warn(`?????? ${result.noteId} ??????:`, err)
     } finally {
       result._timeLoading = false
     }
   })
   
   await Promise.all(promises)
+  return results.filter(item => !item._fileMissing)
 }
 
-// 高亮关键词
 const highlightKeyword = (text) => {
   if (!text || !searchQuery.value.trim()) return text
   const keyword = searchQuery.value.trim()
@@ -458,11 +457,11 @@ const handleSearch = async () => {
       const results = await searchNotes(keyword, userId)
       // 再次检查搜索类型是否改变（防止切换类型导致的竞态）
       if (searchType.value === 'notes') {
-        searchResults.value = results || []
+        searchResults.value = Array.isArray(results) ? results : []
         
         // 批量获取没有时间的笔记的时间信息
         if (searchResults.value.length > 0) {
-          await fetchNoteTimes(searchResults.value)
+          searchResults.value = await fetchNoteTimes(searchResults.value)
         }
       }
     } else {
@@ -470,7 +469,7 @@ const handleSearch = async () => {
       const results = await searchQuestions(keyword, userId)
       // 再次检查搜索类型是否改变（防止切换类型导致的竞态）
       if (searchType.value === 'qa') {
-        searchResults.value = results || []
+        searchResults.value = Array.isArray(results) ? results : []
       }
     }
     

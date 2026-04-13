@@ -84,6 +84,9 @@
             <div class="loader"></div>
             <p>加载笔记内容...</p>
           </div>
+          <div v-else-if="fileUnavailable" class="no-content file-missing">
+            <p>笔记文件已从 MinIO 中丢失，无法继续查看。</p>
+          </div>
           <div v-else-if="noteDetail.fileType === 'pdf'" class="pdf-preview-container">
             <VuePdfEmbed
               v-if="fileUrl"
@@ -307,6 +310,7 @@ const pendingRequests = ref(new Set())
 const debounceTimers = ref({})
 const fileUrl = ref(null)
 const markdownContent = ref('')
+const fileUnavailable = ref(false)
 
 // 评论相关状态
 const comments = ref([])
@@ -510,6 +514,9 @@ const fetchNoteDetail = async () => {
   replyTarget.value = null
   replyContent.value = ''
   commentActionLoading.value = {}
+  fileUnavailable.value = false
+  fileUrl.value = null
+  markdownContent.value = ''
 
   try {
     // 确保noteId是有效的数字
@@ -545,7 +552,7 @@ const fetchNoteDetail = async () => {
     let noteInfo
     try {
       noteInfo = await getFileUrlByNoteId(noteId)
-      if (!noteInfo || !noteInfo.url) {
+      if (!noteInfo || (!noteInfo.url && noteInfo.fileExists !== false)) {
         throw new Error('无法获取笔记信息')
       }
     } catch (urlError) {
@@ -560,6 +567,7 @@ const fetchNoteDetail = async () => {
     // 从后端返回的数据中获取fileType和url
     const fileType = noteInfo.fileType || 'md'
     const urlString = noteInfo.url || ''
+    fileUnavailable.value = noteInfo.fileExists === false || !urlString
 
     // 只支持md和pdf格式，如果不是这两种格式，设置fileType为null，在模板中显示错误信息
     if (fileType !== 'md' && fileType !== 'pdf') {
@@ -580,6 +588,20 @@ const fetchNoteDetail = async () => {
     }
 
     fileUrl.value = urlString
+
+    if (fileUnavailable.value) {
+      noteDetail.value = {
+        title: noteInfo.title || props.initialTitle || route.query.title || '鏃犳爣棰樼瑪璁?',
+        fileType: fileType,
+        noteId: noteId,
+        createdAt: noteInfo.createdAt || null
+      }
+      restoreActionState()
+      await fetchComments(noteId)
+      subscribeToComments()
+      loading.value = false
+      return
+    }
 
     // 构建笔记详情对象（优先使用后端返回的标题，然后是搜索结果传递的标题，最后是路由参数）
     noteDetail.value = {

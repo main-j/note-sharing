@@ -189,9 +189,8 @@ const getDisplayTime = (item) => {
 
 // 批量获取笔记时间信息
 const fetchNoteTimes = async (items) => {
-  if (!items || items.length === 0) return
+  if (!items || items.length === 0) return []
   
-  // 找出没有时间的笔记
   const notesWithoutTime = items.filter(item => 
     item.noteId && 
     !item.updatedAt && 
@@ -201,28 +200,29 @@ const fetchNoteTimes = async (items) => {
     !item._timeLoading
   )
   
-  if (notesWithoutTime.length === 0) return
+  if (notesWithoutTime.length === 0) return items
   
-  // 标记为加载中
   notesWithoutTime.forEach(item => { item._timeLoading = true })
   
-  // 批量获取时间信息
   const promises = notesWithoutTime.map(async (item) => {
     try {
       const noteInfo = await getFileUrlByNoteId(item.noteId)
       if (noteInfo) {
-        // 使用updatedAt，如果没有则使用createdAt
         item.updatedAt = noteInfo.updatedAt || noteInfo.createdAt
         item.createdAt = noteInfo.createdAt
+        if (noteInfo.fileExists === false) {
+          item._fileMissing = true
+        }
       }
     } catch (err) {
-      console.warn(`获取笔记 ${item.noteId} 时间失败:`, err)
+      console.warn(`?????? ${item.noteId} ??????:`, err)
     } finally {
       item._timeLoading = false
     }
   })
   
   await Promise.all(promises)
+  return items.filter(item => !item._fileMissing)
 }
 
 const fetchHotList = async () => {
@@ -234,7 +234,7 @@ const fetchHotList = async () => {
     
     // 批量获取没有时间的笔记的时间信息
     if (hotList.value.length > 0) {
-      await fetchNoteTimes(hotList.value)
+      hotList.value = await fetchNoteTimes(hotList.value)
     }
   } catch (err) {
     console.error('获取热榜失败:', err)
