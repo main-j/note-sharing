@@ -919,15 +919,15 @@ const handleToggleLike = async (comment) => {
 
   commentActionLoading.value[comment._id] = true
   try {
-    if (comment.LikedOrNot) {
+    if (comment.likedOrNot) {
       // 取消点赞
       await cancelLikeRemark(comment._id, userId)
-      comment.LikedOrNot = false
+      comment.likedOrNot = false
       comment.likeCount = Math.max(0, (comment.likeCount || 0) - 1)
     } else {
       // 点赞
       await likeRemark(comment._id, userId)
-      comment.LikedOrNot = true
+      comment.likedOrNot = true
       comment.likeCount = (comment.likeCount || 0) + 1
     }
   } catch (err) {
@@ -1089,12 +1089,12 @@ const subscribeToComments = () => {
         return
       }
 
-      // 更新 LikedOrNot（根据当前用户）
+      // 更新 likedOrNot（根据当前用户）—— 后端 JSON 字段名是 likedOrNot（首字母小写）
       const currentUserId = getCurrentUserId()
       if (currentUserId) {
         // 检查当前用户是否点赞了这条评论
         // 这里简化处理，设为 false，实际应该从后端获取或检查
-        newRemark.LikedOrNot = false
+        newRemark.likedOrNot = false
       }
 
       // 如果是回复，需要找到父评论并添加到其 replies 中

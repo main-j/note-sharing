@@ -46,5 +46,5 @@ public class RemarkVO {
     private List<RemarkVO> replies;
 
     /** 当前用户是否已经点赞 **/
-    private Boolean LikedOrNot;
+    private Boolean likedOrNot;
 }

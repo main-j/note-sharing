@@ -36,7 +36,8 @@ public interface RemarkConvert {
             @Mapping(target = "likeCount",ignore=true),
             @Mapping(source = "replyToUsername",target ="replyToUsername"), // 使用 getReplyToUsername 方法填充 replyToUsername
             @Mapping(target = "replies", ignore = true), // 暂时不处理子评论
-            @Mapping(target = "LikedOrNot", ignore = true) // 当前用户是否已点赞，可能需要额外计算或通过其它查询填充
+            @Mapping(target = "likedOrNot", ignore = true),// 当前用户是否已点赞，可能需要额外计算或通过其它查询填充
+            @Mapping(target = "avatarUrl", ignore = true)
     })
     RemarkVO toVO(RemarkDO remarkDO);
     List<RemarkVO> toVOList(List<RemarkDO> remarkDOList);

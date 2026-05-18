@@ -31,7 +31,7 @@
       <div class="comment-actions">
         <button
           class="comment-action-btn"
-          :class="{ active: comment.LikedOrNot }"
+          :class="{ active: comment.likedOrNot }"
           :disabled="commentActionLoading[comment._id]"
           @click="$emit('toggle-like', comment)"
         >

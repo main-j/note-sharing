@@ -1,6 +1,7 @@
 package com.project.login.model.dataobject;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,5 +20,8 @@ public class RemarkCountDO {
 
     @Field("remark_like_count")
     private Long remarkLikeCount;
+
+    @Version
+    private Long version;
 
 }

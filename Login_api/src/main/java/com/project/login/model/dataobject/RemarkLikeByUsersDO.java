@@ -5,11 +5,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
-import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Set;
 
 @Data
@@ -23,4 +22,7 @@ public class RemarkLikeByUsersDO {
 
     @Field("user_list")
     private Set<Long> userList;
+
+    @Version
+    private Long version;
 }
