@@ -1,0 +1,2 @@
+cd C:\Users\35445\Desktop\note-sharing\scripts\backend-deps
+powershell -ExecutionPolicy Bypass -File .\start-backend-deps.ps1 -StartFlinkCluster

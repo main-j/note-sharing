@@ -1,0 +1,8 @@
+# 1. 先停止 IntelliJ 里的 LoginApplication
+
+# 2. 再清缓存
+cd C:\Users\35445\Desktop\note-sharing\scripts\backend-deps
+powershell -ExecutionPolicy Bypass -File .\clear-backend-cache.ps1 -Confirm:$false
+
+# 3. 最后按需关闭依赖
+powershell -ExecutionPolicy Bypass -File .\stop-backend-deps.ps1 -StopFlinkCluster
