@@ -1,0 +1,237 @@
+# Recommendation-related infrastructure for local development (Docker Desktop).
+#
+# Includes:
+#   - Kafka (KRaft, apache/kafka) -> localhost:9092
+#   - Milvus standalone          -> localhost:19530 (Web UI / metrics :9091)
+#   - MLflow tracking server     -> localhost:5001 (container port 5000)
+#   - BGE embedding service      -> localhost:8088 (text -> vector)
+#   - Recommend MLOps service    -> localhost:8090 (train/evaluate/export/rollout trigger)
+#   - Feast Feature Server       -> localhost:6566 (online store: WSL Redis, not in compose)
+#
+# Redis runs in WSL (see scripts/backend-deps). Set FEAST_REDIS_CONNECTION in .env
+# to your WSL IP (same as spring.redis.host), e.g. 172.24.198.86:6379.
+#
+# Milvus dependency MinIO is mapped to host ports 19000 / 19001 so it does NOT
+# conflict with the app's MinIO on 9000 / 9001 (see scripts/backend-deps/config.ps1).
+
+name: recommendation-infra
+
+services:
+  # Official Apache Kafka image (Bitnami tag "4.2" is not published on Docker Hub).
+  # Layout aligned with:
+  # https://github.com/apache/kafka/blob/trunk/docker/examples/docker-compose-files/single-node/plaintext/docker-compose.yml
+  kafka:
+    image: docker.io/apache/kafka:4.0.1
+    hostname: kafka
+    container_name: rec-kafka
+    # Named volumes are root-owned by default; apache/kafka runs as uid 1000 and hits
+    # AccessDeniedException on /tmp/kraft-combined-logs without running as root (dev-only).
+    user: "0:0"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:19092"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT_HOST://:9092,PLAINTEXT://:19092"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - rec-infra
+
+  milvus-etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - milvus_etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    networks:
+      - rec-infra
+
+  milvus-minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      # Avoid clash with app MinIO on 9000 / 9001
+      - "19000:9000"
+      - "19001:9001"
+    volumes:
+      - milvus_minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rec-infra
+
+  milvus-standalone:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.4.17
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      milvus-etcd:
+        condition: service_started
+      milvus-minio:
+        condition: service_healthy
+    networks:
+      - rec-infra
+
+  # Pre-built image (GHCR) avoids "docker compose build" pulling python:3.11-slim-bookworm
+  # from Docker Hub — some networks/IPv6 setups reset the Hub OAuth connection.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.19.0
+    working_dir: /mlflow
+    ports:
+      - "${MLFLOW_HOST_PORT:-5001}:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command:
+      - mlflow
+      - server
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --default-artifact-root
+      - /mlflow/artifacts
+    networks:
+      - rec-infra
+
+  bge-embedding-service:
+    build:
+      context: ./bge-service
+    image: rec-bge-embedding:latest
+    container_name: rec-bge-embedding
+    ports:
+      - "${BGE_HOST_PORT:-8088}:8088"
+    environment:
+      BGE_MODEL_NAME: ${BGE_MODEL_NAME:-BAAI/bge-base-zh-v1.5}
+      BGE_DEVICE: ${BGE_DEVICE:-cpu}
+      BGE_NORMALIZE: "true"
+      BGE_BATCH_SIZE: ${BGE_BATCH_SIZE:-32}
+      HF_HOME: /models/hf-cache
+      HF_ENDPOINT: ${HF_ENDPOINT:-}
+    volumes:
+      - bge_hf_cache:/models/hf-cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - rec-infra
+
+  recommend-mlops-service:
+    build:
+      context: ../..
+      dockerfile: docker/recommendation-infra/mlops-service/Dockerfile
+    image: rec-mlops-service:latest
+    container_name: rec-mlops
+    working_dir: /workspace
+    ports:
+      - "${MLOPS_HOST_PORT:-8090}:8090"
+    environment:
+      MLOPS_WORKSPACE: /workspace
+      MLFLOW_TRACKING_URI: ${MLOPS_TRACKING_URI:-http://mlflow:5000}
+      MLOPS_MODEL_NAME: ${MLOPS_MODEL_NAME:-recommend_coarse_rank}
+      MLOPS_MODEL_TYPE: ${MLOPS_MODEL_TYPE:-lightgbm}
+      FEAST_REDIS_CONNECTION: ${FEAST_REDIS_CONNECTION:-host.docker.internal:6379}
+      RECOMMEND_KAFKA_BOOTSTRAP_SERVERS: ${MLOPS_KAFKA_BOOTSTRAP_SERVERS:-kafka:19092}
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../..:/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mlflow:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rec-infra
+
+  feast-feature-server:
+    image: python:3.11-slim
+    container_name: rec-feast
+    working_dir: /feast
+    ports:
+      - "${FEAST_HOST_PORT:-6566}:6566"
+    volumes:
+      - ../../recommendation_offline/feast_repo:/feast
+    environment:
+      # WSL Redis (override in .env; default tries Docker Desktop host gateway)
+      FEAST_REDIS_CONNECTION: ${FEAST_REDIS_CONNECTION:-host.docker.internal:6379}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      bash -c "pip install --no-cache-dir 'feast[redis]==0.47.0' &&
+      feast -c /feast apply &&
+      feast -c /feast serve -h 0.0.0.0 -p 6566"
+    networks:
+      - rec-infra
+
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.08-py3
+    container_name: rec-triton
+    ports:
+      - "${TRITON_HTTP_PORT:-8000}:8000"
+      - "${TRITON_GRPC_PORT:-8001}:8001"
+      - "${TRITON_METRICS_PORT:-8002}:8002"
+    volumes:
+      - ./triton/model_repository:/models
+    command: ["tritonserver", "--model-repository=/models", "--strict-model-config=false"]
+    networks:
+      - rec-infra
+
+networks:
+  rec-infra:
+    name: rec-infra
+
+volumes:
+  kafka_data:
+  milvus_etcd_data:
+  milvus_minio_data:
+  milvus_data:
+  mlflow_data:
+  bge_hf_cache:

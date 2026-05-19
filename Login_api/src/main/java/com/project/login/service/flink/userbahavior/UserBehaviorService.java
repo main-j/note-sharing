@@ -4,7 +4,13 @@ import com.project.login.mapper.NoteMapper;
 import com.project.login.mapper.NoteSpaceMapper;
 import com.project.login.mapper.NotebookMapper;
 import com.project.login.mapper.TagMapper;
+import com.project.login.model.dto.userbehavior.BehaviorType;
 import com.project.login.model.dto.userbehavior.UserBehaviorDTO;
+import com.project.login.service.recommend.config.RecommendationInfraProperties;
+import com.project.login.service.recommend.event.BehaviorEventProducer;
+import com.project.login.service.recommend.event.RecommendEventType;
+import com.project.login.service.recommend.event.model.RecommendEvent;
+import com.project.login.service.recommend.model.ItemType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -14,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -22,6 +29,8 @@ import java.util.stream.Stream;
 public class UserBehaviorService {
 
     private final StringRedisTemplate redisTemplate;
+    private final BehaviorEventProducer behaviorEventProducer;
+    private final RecommendationInfraProperties infraProperties;
     private final NoteMapper noteMapper;
     private final NotebookMapper notebookMapper;
     private final NoteSpaceMapper notespaceMapper;
@@ -87,8 +96,30 @@ public class UserBehaviorService {
         map.put("tags", tag);     // 用户兴趣特征
         map.put("weight", String.valueOf(weight));   // 行为强度
 
-        redisTemplate.opsForStream().add(STREAM_KEY, map);
+        if (infraProperties.getEvent().isLegacyRedisStreamEnabled()) {
+            redisTemplate.opsForStream().add(STREAM_KEY, map);
+        }
 
-        log.info("User behavior recorded for Flink: {}", map);
+        RecommendEvent event = RecommendEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .userId(dto.getUserId())
+                .itemType(ItemType.NOTE)
+                .itemId(String.valueOf(dto.getTargetId()))
+                .eventType(mapBehaviorType(dto.getBehaviorType()))
+                .tags(tags)
+                .timestamp(ts)
+                .build();
+        behaviorEventProducer.send(event);
+
+        log.info("User behavior recorded for Flink/Kafka: {}", map);
+    }
+
+    private RecommendEventType mapBehaviorType(BehaviorType behaviorType) {
+        return switch (behaviorType) {
+            case VIEW -> RecommendEventType.VIEW;
+            case LIKE -> RecommendEventType.LIKE;
+            case FAVORITE -> RecommendEventType.FAVORITE;
+            case COMMENT -> RecommendEventType.COMMENT;
+        };
     }
 }

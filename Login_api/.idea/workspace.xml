@@ -81,14 +81,14 @@
   <component name="RunManager">
     <configuration name="LoginApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
       <module name="Login_api.main" />
-      <option name="SHORTEN_COMMAND_LINE" value="ARGS_FILE" />
+      <option name="SHORTEN_COMMAND_LINE" value="JAR_MANIFEST" />
       <option name="SPRING_BOOT_MAIN_CLASS" value="com.project.login.LoginApplication" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
     </configuration>
     <configuration default="true" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-      <option name="SHORTEN_COMMAND_LINE" value="ARGS_FILE" />
+      <option name="SHORTEN_COMMAND_LINE" value="JAR_MANIFEST" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>

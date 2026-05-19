@@ -121,4 +121,39 @@ public interface NoteMapper {
             """)
     @ResultMap("NoteBaseResultMap")
     List<NoteDO> selectPublished();
+
+    @Select({
+            "<script>",
+            "SELECT n.id, n.title, n.filename, n.file_type, n.notebook_id, n.created_at, n.updated_at ",
+            "FROM notes n ",
+            "INNER JOIN notebooks nb ON n.notebook_id = nb.id ",
+            "INNER JOIN note_spaces ns_space ON nb.space_id = ns_space.id ",
+            "INNER JOIN note_stats ns ON n.id = ns.note_id ",
+            "WHERE ns_space.user_id IN ",
+            "<foreach collection='authorIds' item='authorId' open='(' separator=',' close=')'>#{authorId}</foreach>",
+            " AND n.id NOT IN (",
+            "   SELECT note_id FROM note_moderation WHERE status = 'FLAGGED' AND is_handled = FALSE",
+            " ) ",
+            "ORDER BY COALESCE(ns.last_activity_at, n.updated_at) DESC ",
+            "LIMIT #{limit}",
+            "</script>"
+    })
+    @ResultMap("NoteBaseResultMap")
+    List<NoteDO> selectRecentPublishedByAuthorIds(@Param("authorIds") List<Long> authorIds,
+                                                  @Param("limit") int limit);
+
+    @Select("""
+            SELECT n.id, n.title, n.filename, n.file_type, n.notebook_id, n.created_at, n.updated_at
+            FROM notes n
+            INNER JOIN note_stats ns ON n.id = ns.note_id
+            WHERE n.id NOT IN (
+                SELECT note_id
+                FROM note_moderation
+                WHERE status = 'FLAGGED' AND is_handled = FALSE
+            )
+            ORDER BY COALESCE(ns.last_activity_at, n.updated_at) DESC
+            LIMIT #{limit}
+            """)
+    @ResultMap("NoteBaseResultMap")
+    List<NoteDO> selectRecentPublished(@Param("limit") int limit);
 }

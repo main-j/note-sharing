@@ -50,4 +50,11 @@ public interface NoteModerationMapper {
     @Select("SELECT * FROM note_moderation WHERE note_id = #{noteId} ORDER BY created_at DESC")
     @ResultMap("BaseResultMap")
     List<NoteModerationDO> selectByNoteId(Long noteId);
+
+    @Select("""
+            SELECT DISTINCT note_id
+            FROM note_moderation
+            WHERE status = 'FLAGGED' AND is_handled = FALSE
+            """)
+    List<Long> selectPendingFlaggedNoteIds();
 }

@@ -28,6 +28,15 @@ public interface NoteStatsMapper {
     @Select("SELECT * FROM note_stats ORDER BY last_activity_at DESC LIMIT #{limit}")
     List<NoteStatsDO> getRecentUpdated(@Param("limit") int limit);
 
+    @Select("""
+            SELECT *
+            FROM note_stats
+            ORDER BY (views * 0.2 + likes * 1.0 + favorites * 1.5 + comments * 2.0) DESC,
+                     last_activity_at DESC
+            LIMIT #{limit}
+            """)
+    List<NoteStatsDO> getHotNotes(@Param("limit") int limit);
+
     @Select({
             "<script>",
             "SELECT * FROM note_stats WHERE note_id IN ",

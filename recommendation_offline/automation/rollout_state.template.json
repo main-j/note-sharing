@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "experimentId": "recommend_rank_v1",
+  "controlVariant": "control_rule",
+  "treatmentVariant": "treatment_model",
+  "modelRankRatio": 0.0,
+  "modelEnabled": false,
+  "modelVersion": "pending",
+  "previousModelVersion": null
+}

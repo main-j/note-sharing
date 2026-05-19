@@ -1,0 +1,205 @@
+可以，既然你决定直接上这套现代化推荐栈，那推荐系统可以按下面这个框架定型。
+
+最终技术栈
+Kafka          -> 用户行为流 / 曝光流 / 搜索流
+Flink          -> 实时特征处理、实时画像、热门榜、已看集合
+Spark          -> 离线样本构建、离线特征处理、模型训练数据生成
+Feast          -> 统一特征管理，保证训练/线上特征一致
+Redis          -> Online Feature Store，低延迟读取用户/内容/作者特征
+Milvus/Faiss   -> 向量召回，支持 ANN Retrieval
+MLflow         -> 模型实验管理、模型版本管理、模型注册
+ONNX Runtime   -> 第一阶段轻量模型推理
+Triton         -> 后期多模型、高并发推理服务
+Spring Boot    -> 推荐服务编排层 / Home Mixer / API
+Elasticsearch  -> 关键词召回、标签召回、搜索意图召回
+MySQL          -> 用户、笔记、关注、统计、安全审核等结构化数据
+MongoDB        -> 问答内容、回答、评论、回复
+数据流框架
+Client/App
+  |
+  |-- 曝光 / 点击 / 浏览 / 点赞 / 收藏 / 评论 / 搜索
+  v
+Spring Boot Event API
+  |
+  v
+Kafka
+  |-- user_behavior_topic
+  |-- user_search_topic
+  |-- user_exposure_topic
+  |-- content_event_topic
+  |
+  +--> Flink Real-time Pipeline
+  |       |
+  |       |-- 实时用户画像
+  |       |-- 最近行为序列
+  |       |-- 已曝光/已点击集合
+  |       |-- 实时热门榜
+  |       |-- item 实时统计特征
+  |       v
+  |     Feast Online
+  |       |
+  |       v
+  |     Redis
+  |
+  +--> Spark Offline Pipeline
+          |
+          |-- 离线样本构建
+          |-- point-in-time join
+          |-- 离线用户特征
+          |-- 离线 item 特征
+          |-- 训练数据集
+          v
+        Feast Offline
+          |
+          v
+        Model Training
+          |
+          |-- Two-Tower
+          |-- LightGBM / DeepFM
+          |-- DIN / SASRec
+          v
+        MLflow Model Registry
+          |
+          +--> ONNX Runtime
+          |
+          +--> Triton 后期部署
+在线推荐主链路
+Feed Request
+  |
+  v
+Spring Boot Recommendation Service
+  |
+  v
+Home Mixer / Orchestrator
+  |
+  |-- Query Hydration
+  |     |-- 读 Redis / Feast Online
+  |     |-- 获取用户画像、最近行为、关注列表、已曝光集合
+  |
+  |-- Multi-Source Recall
+  |     |-- Follow Recall       -> MySQL user_follow
+  |     |-- Tag Recall          -> ES + Feast 用户兴趣
+  |     |-- Search Intent Recall-> ES + recent search features
+  |     |-- Hot Recall          -> Redis 热榜
+  |     |-- ANN Recall          -> Milvus/Faiss
+  |     |-- Cold Start Recall   -> 热门 + 新内容 + 标签内容
+  |
+  |-- Candidate Merge Pool
+  |     |-- 统一 NOTE / QUESTION 候选
+  |
+  |-- Pre-Filters
+  |     |-- 去重
+  |     |-- 已曝光过滤
+  |     |-- 安全审核过滤
+  |     |-- 黑名单 / 作者过滤
+  |
+  |-- Feature Hydration
+  |     |-- Feast Online / Redis 批量取特征
+  |
+  |-- Coarse Rank
+  |     |-- LightGBM / DeepFM
+  |     |-- ONNX Runtime 推理
+  |
+  |-- Fine Rank
+  |     |-- DIN / SASRec / Transformer Ranker
+  |     |-- 后期 Triton
+  |
+  |-- ReRank
+  |     |-- 多样性
+  |     |-- 新鲜度
+  |     |-- 探索
+  |     |-- 笔记/问答混排
+  |
+  v
+Final Top-K Feed
+
+服务模块划分
+recommend
+  ├── event
+  │   ├── BehaviorEventProducer      -> 写 Kafka
+  │   ├── ExposureEventProducer      -> 写 Kafka
+  │   └── SearchEventProducer        -> 写 Kafka
+  │
+  ├── context
+  │   └── QueryHydrationService      -> 构建推荐上下文
+  │
+  ├── recall
+  │   ├── RecallSource
+  │   ├── FollowRecallSource
+  │   ├── TagRecallSource
+  │   ├── SearchIntentRecallSource
+  │   ├── HotRecallSource
+  │   ├── VectorRecallSource
+  │   └── ColdStartRecallSource
+  │
+  ├── candidate
+  │   ├── CandidateMergeService
+  │   └── CandidateFilterService
+  │
+  ├── feature
+  │   ├── FeastFeatureClient
+  │   ├── RedisFeatureClient
+  │   └── FeatureHydrationService
+  │
+  ├── rank
+  │   ├── RankService
+  │   ├── RuleRanker
+  │   ├── OnnxRanker
+  │   └── TritonRanker
+  │
+  ├── rerank
+  │   ├── DiversityReranker
+  │   ├── FreshnessReranker
+  │   └── FeedMixReranker
+  │
+  └── feed
+      ├── HomeFeedService
+      └── FeedSelectionService
+核心存储职责
+Kafka
+  - 原始用户行为事件
+  - 曝光事件
+  - 搜索事件
+  - 内容变更事件
+Flink
+  - 实时画像
+  - 实时热门
+  - 实时 item 统计
+  - 最近行为序列
+  - 已曝光集合
+Spark
+  - 离线训练样本
+  - 离线特征
+  - 模型训练数据
+Feast
+  - 用户特征
+  - 内容特征
+  - 作者特征
+  - 交叉特征
+Redis
+  - Feast Online Store
+  - user_recent_actions
+  - user_seen_items
+  - hot_notes
+  - hot_questions
+  - user_embedding cache
+Milvus/Faiss
+  - note embedding
+  - question embedding
+  - author embedding 可选
+MLflow
+  - 模型实验
+  - 参数记录
+  - 指标记录
+  - 模型版本
+  - 模型注册
+ONNX Runtime
+  - 第一阶段在线粗排/精排推理
+Triton
+  - 后期承载多模型推理
+  - Two-Tower / DeepFM / DIN / SASRec
+最终形态就是：
+
+Kafka 收事件，Flink/Spark 产特征，Feast 管特征，Redis 做在线特征低延迟读取，
+Milvus/Faiss 做向量召回，MLflow 管模型，ONNX Runtime 先推理，
+后期 Triton 承载复杂多模型服务，Spring Boot 负责编排整条推荐链路。

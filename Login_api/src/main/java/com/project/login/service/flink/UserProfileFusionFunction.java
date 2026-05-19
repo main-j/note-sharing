@@ -24,8 +24,9 @@ public class UserProfileFusionFunction
     private MapState<String, Integer> searchProfile;
 
     // Redis 配置
-    private final String redisHost = "localhost";
-    private final int redisPort = 6379;
+    private final String redisHost = System.getenv().getOrDefault("RECOMMEND_REDIS_HOST", "localhost");
+    private final int redisPort = Integer.parseInt(System.getenv().getOrDefault("RECOMMEND_REDIS_PORT", "6379"));
+    private final String fusedProfilePrefix = System.getenv().getOrDefault("RECOMMEND_FUSED_PROFILE_KEY_PREFIX", "user_fused_profile:");
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -98,7 +99,7 @@ public class UserProfileFusionFunction
     // 写入 Redis
     private void writeToRedis(Long userId, Map<String, Double> fused) {
         try (Jedis jedis = new Jedis(redisHost, redisPort)) {
-            String key = "user_fused_profile:" + userId;
+            String key = fusedProfilePrefix + userId;
             jedis.set(key, objectMapper.writeValueAsString(fused));
         } catch (Exception e) {
             e.printStackTrace();

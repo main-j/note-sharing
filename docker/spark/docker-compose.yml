@@ -1,0 +1,45 @@
+# Local Spark standalone cluster (Docker Official Image: library/spark).
+# Bitnami Spark tags such as `bitnami/spark:4.1` are often absent on Docker Hub; use `spark:*` instead.
+#
+# Master UI is mapped to host 8085 to reduce clashes with Flink (8081) or other tools using 8080.
+
+name: spark-local
+
+services:
+  spark-master:
+    image: docker.io/library/spark:4.0.2-python3
+    hostname: spark-master
+    container_name: spark-master
+    ports:
+      - "7077:7077"
+      - "8085:8080"
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.master.Master
+      - --host
+      - spark-master
+      - --port
+      - "7077"
+      - --webui-port
+      - "8080"
+    networks:
+      - spark-net
+
+  spark-worker:
+    image: docker.io/library/spark:4.0.2-python3
+    hostname: spark-worker
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    ports:
+      - "8086:8081"
+    command:
+      - /opt/spark/bin/spark-class
+      - org.apache.spark.deploy.worker.Worker
+      - spark://spark-master:7077
+    networks:
+      - spark-net
+
+networks:
+  spark-net:
+    name: spark-local-net

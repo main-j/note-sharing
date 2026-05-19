@@ -470,13 +470,13 @@
 
 ### 搜索笔记
 - **路径**: `POST /api/v1/search/notes`
-- **功能**: 搜索笔记（使用Elasticsearch，支持聚合和评分排序）
+- **功能**: 搜索笔记。匿名请求走原有 Elasticsearch 排序；带 `userId` 的请求会进入推荐排序链路（个性化重排）
 - **请求体**: `NoteSearchRequest`
 - **响应**: 笔记搜索结果列表
 
 ### 搜索问题
 - **路径**: `GET /api/v1/search/questions?keyword={keyword}&userId={userId}`
-- **功能**: 搜索问题（QA），支持评分排序
+- **功能**: 搜索问题（QA）。匿名请求走原有 Elasticsearch 排序；带 `userId` 的请求会进入推荐排序链路（个性化重排）
 - **参数**: 
   - `keyword`: 搜索关键词
   - `userId`: 用户ID（可选，用于记录搜索行为）
@@ -591,7 +591,32 @@
 
 ## 12. 推荐系统 (`/api/v1/recommend`)
 
-### 推荐笔记
+### 首页推荐 Feed（主链路）
+- **路径**: `GET /api/v1/recommend/feed?userId={userId}&pageSize={pageSize}`
+- **功能**: 多路召回 + 过滤 + 特征填充 + 排序 + 重排，返回混合 NOTE/QUESTION feed
+- **参数**:
+  - `userId`: 用户ID
+  - `pageSize`: 返回条数（默认20）
+- **响应**: `HomeFeedResult`
+  - `requestId`: 本次推荐请求ID（用于曝光/点击事件关联）
+  - `scene`: 推荐场景（如 `HOME` / `SEARCH`）
+  - `experimentId`: 实验ID
+  - `variant`: 实验分组（control / treatment）
+  - `modelVersion`: 当前模型版本
+  - `modelEnabled`: 当前请求是否启用模型排序
+  - `items`: `FeedItemVO[]`（标题、作者、统计数、reason、score 等）
+    - `experimentId`, `variant`, `modelVersion`, `ranker`
+
+### 推荐交互事件
+- **路径**: `POST /api/v1/recommend/events/interaction`
+- **功能**: 上报搜索、点击、点赞、收藏等行为事件到 Kafka
+- **请求体**: `InteractionEventRequest`
+  - `userId`, `eventType`（必填）
+  - `itemType`, `itemId`, `authorId`, `requestId`, `source`, `position`, `tags`, `keyword`
+  - `scene`, `experimentId`, `variant`, `modelVersion`, `ranker`
+- **响应**: `true`
+
+### 推荐笔记（兼容接口）
 - **路径**: `GET /api/v1/recommend/notes?userId={userId}&topN={topN}`
 - **功能**: 根据用户关键词推荐笔记
 - **参数**: 
@@ -599,13 +624,25 @@
   - `topN`: 推荐数量（默认10）
 - **响应**: 推荐笔记列表
 
-### 推荐问答
+### 推荐问答（兼容接口）
 - **路径**: `GET /api/v1/recommend/QAs?userId={userId}&topN={topN}`
 - **功能**: 根据用户关键词推荐问答
 - **参数**: 
   - `userId`: 用户ID
   - `topN`: 推荐数量（默认10）
 - **响应**: 推荐问答列表
+
+### 内部触发推荐训练
+- **路径**: `POST /internal/recommend/train?runExport={runExport}`
+- **功能**: Spring 代理调用独立推荐 MLOps 服务，触发离线样本生成、LightGBM 训练、评估、ONNX 导出和灰度状态更新
+- **参数**:
+  - `runExport`: 是否先执行 MySQL/Kafka 原始数据导出（默认 `false`）
+- **响应**: MLOps 服务返回的任务接收结果（`accepted`, `jobId`, `status` 等）
+
+### 查询推荐训练状态
+- **路径**: `GET /internal/recommend/status`
+- **功能**: 查询独立推荐 MLOps 服务最近一次自动化任务状态
+- **响应**: 最近一次任务状态、返回码和日志片段
 
 ---
 

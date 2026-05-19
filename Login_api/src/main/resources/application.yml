@@ -53,8 +53,19 @@ spring:
       simple:
         acknowledge-mode: manual
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: note-sharing-recommend
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
   redis:
-    host: localhost
+    host: 172.24.198.86
     port: 6379
     database: 0
 
@@ -112,3 +123,68 @@ sensitive:
     concurrency: 4          # 并发审查线程数
   keywords:
     path: ""                 # 外部敏感词文件路径（可选，留空则使用classpath下的文件）
+
+recommendation:
+  feed:
+    max-recall-per-source: 250
+    seen-ttl-days: 14
+    recent-action-size: 200
+    diversity-per-source-limit: 6
+    freshness-half-life-hours: 12.0
+    freshness-boost-max: 1.2
+    note-mix-ratio: 0.7
+    min-question-count: 3
+    min-note-count: 10
+  infra:
+    topic:
+      behavior: rec_user_behavior
+      search: rec_user_search
+      exposure: rec_user_exposure
+      content: rec_content_event
+    event:
+      legacy-redis-stream-enabled: false
+    redis:
+      fused-profile-key-prefix: user_fused_profile:
+      recent-search-terms-key-prefix: user_recent_search_terms:
+      recent-actions-key-prefix: user_recent_actions:
+      seen-items-key-prefix: user_seen_items:
+      hot-notes-key: hot_notes
+      item-realtime-stats-key-prefix: item_realtime_stats:
+    milvus:
+      enabled: false
+      host: localhost
+      port: 19530
+      collection-name: recommend_item_vectors
+      top-k: 60
+      vector-dim: 128
+    onnx:
+      enabled: false
+      model-path: models/recommend_coarse_rank.onnx
+    triton:
+      enabled: false
+      endpoint: http://localhost:8000
+      model-name: recommend_coarse_rank
+      timeout-millis: 800
+    mlflow:
+      tracking-uri: http://localhost:5001
+    feast:
+      enabled: false
+      repo-path: recommendation_offline/feast_repo
+      server-url: http://localhost:6566
+      timeout-millis: 800
+      user-feature-service: user_features
+      item-feature-service: item_features
+  experiment:
+    enabled: true
+    experiment-id: recommend_rank_v1
+    model-rank-ratio: 0.0
+    control-variant: control_rule
+    treatment-variant: treatment_model
+    default-model-version: pending
+    state-file: data/pipeline/rollout_state.json
+    auto-rollback-error-rate-threshold: 0.05
+  mlops:
+    service-url: http://localhost:8090
+    timeout-millis: 3000
+    model-name: recommend_coarse_rank
+    model-type: lightgbm

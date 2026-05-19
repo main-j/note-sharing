@@ -1,0 +1,8 @@
+project: note_sharing_recommend
+registry: data/registry.db
+provider: local
+online_store:
+  type: redis
+  connection_string: "${FEAST_REDIS_CONNECTION:localhost:6379}"
+offline_store:
+  type: file

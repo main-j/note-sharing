@@ -7,7 +7,6 @@ import com.project.login.model.dataobject.NoteStatsDO;
 import com.project.login.model.dto.search.NoteSearchDTO;
 import com.project.login.model.vo.NoteSearchVO;
 import lombok.RequiredArgsConstructor;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;

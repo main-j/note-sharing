@@ -1,0 +1,14 @@
+sample:
+  min_sample_count: 500
+  min_positive_count: 50
+  min_positive_rate: 0.01
+  max_positive_rate: 0.80
+
+evaluation:
+  min_auc: 0.60
+  min_pr_auc: 0.15
+
+rollout:
+  progression: [0.0, 0.05, 0.2, 0.5, 1.0]
+  rollback_ratio: 0.0
+  max_error_rate: 0.05

@@ -6,6 +6,7 @@ import com.project.login.model.request.search.NoteSearchRequest;
 import com.project.login.model.response.StandardResponse;
 import com.project.login.model.vo.NoteSearchVO;
 import com.project.login.model.vo.qa.QuestionVO;
+import com.project.login.service.recommend.PersonalizedSearchRecommendationService;
 import com.project.login.service.search.SearchQAService;
 import com.project.login.service.search.SearchService;
 import com.project.login.service.flink.userbahavior.UserSearchService;
@@ -26,6 +27,7 @@ public class SearchController {
 
     private final SearchService searchService;
     private final SearchQAService searchQAService;
+    private final PersonalizedSearchRecommendationService personalizedSearchRecommendationService;
 
     @Qualifier("searchConvert")
     private final SearchConvert convert;
@@ -40,7 +42,9 @@ public class SearchController {
         NoteSearchDTO dto = convert.toSearchDTO(request);
 
         // 2. 调用 Service 执行搜索
-        List<NoteSearchVO> results = searchService.searchNotes(dto);
+        List<NoteSearchVO> results = request.getUserId() == null
+                ? searchService.searchNotes(dto)
+                : personalizedSearchRecommendationService.searchNotes(dto, request.getUserId());
 
         // 3. 记录用户搜索行为
         if (request.getUserId() != null && request.getKeyword() != null) {
@@ -57,7 +61,9 @@ public class SearchController {
             @RequestParam(required = false) Long userId
     ) {
         // 1. 调用 QA 搜索 Service
-        List<QuestionVO> results = searchQAService.searchQuestions(keyword);
+        List<QuestionVO> results = userId == null
+                ? searchQAService.searchQuestions(keyword)
+                : personalizedSearchRecommendationService.searchQuestions(keyword, userId);
 
         // 2. 记录用户搜索行为
         if (userId != null && keyword != null && !keyword.isBlank()) {
