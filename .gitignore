@@ -16,3 +16,17 @@ venv/
 data/
 Login_api/models/
 docker/recommendation-infra/triton/model_repository/*/*/model.onnx
+
+# Local secrets
+API_KEY.txt
+.env
+.env.local
+*.key
+*.secret
+
+# Local runtime artifacts
+.runtime/
+
+# Local SDD workspace artifacts
+.cursor/
+specs/
