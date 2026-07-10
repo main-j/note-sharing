@@ -74,7 +74,7 @@
           </div>
           <!-- 删除按钮（仅对问题类型且是作者时显示） -->
           <button
-            v-if="item.type === 'question' && item.authorId === userStore.userInfo?.id"
+            v-if="item.type === 'question' && normalizeAuthorId(item.authorId) === normalizeAuthorId(userStore.userInfo?.id)"
             class="delete-btn"
             @click.stop="handleDeleteQuestion(item)"
             title="删除问题"
@@ -183,7 +183,8 @@ import { AI_MESSAGES } from '@/constants/aiMessages'
 import {
   createQuestion,
   getQuestionDetail,
-  deleteQuestion
+  deleteQuestion,
+  listQuestions
 } from '@/api/qa'
 import { formatTime } from '@/utils/time'
 import MessageToast from '@/components/MessageToast.vue'
@@ -199,8 +200,7 @@ const { showToast, toastMessage, toastType, toastDuration, showSuccess, showErro
 // 标签页配置
 const tabs = [
   { label: '我的问题', value: 'my-questions' },
-  { label: '我的回答', value: 'my-answers' },
-  { label: '所有问答', value: 'all' }
+  { label: '我的回答', value: 'my-answers' }
 ]
 
 const activeTab = ref('my-questions')
@@ -299,8 +299,38 @@ const loadSimilarQuestions = async () => {
   }
 }
 
-// 从localStorage加载问题列表
-const loadQuestionsFromStorage = () => {
+const normalizeAuthorId = (value) => Number(value)
+
+// 从后端加载问题列表
+const loadQuestionsFromServer = async () => {
+  loading.value = true
+  try {
+    const data = await listQuestions()
+    const items = Array.isArray(data) ? data : []
+    questionList.value = items.map(questionVO => ({
+      questionId: questionVO.questionId,
+      authorId: normalizeAuthorId(questionVO.authorId),
+      title: questionVO.title,
+      content: questionVO.content,
+      tags: questionVO.tags || [],
+      createdAt: questionVO.createdAt,
+      likeCount: questionVO.likeCount || 0,
+      favoriteCount: questionVO.favoriteCount || 0,
+      answerCount: questionVO.answerCount ?? questionVO.answers?.length ?? 0,
+      answers: questionVO.answers || [],
+      authorName: questionVO.authorName || `用户 #${questionVO.authorId}`
+    }))
+    saveQuestionsToStorage()
+  } catch (err) {
+    console.error('加载问答列表失败', err)
+    loadQuestionsFromStorageFallback()
+  } finally {
+    loading.value = false
+  }
+}
+
+// 后端不可用时回退到 localStorage
+const loadQuestionsFromStorageFallback = () => {
   try {
     const stored = localStorage.getItem('qa_question_list')
     if (stored) {
@@ -327,7 +357,7 @@ const upsertQuestion = (questionVO) => {
   const idx = questionList.value.findIndex(q => q.questionId === questionVO.questionId)
   const questionData = {
     questionId: questionVO.questionId,
-    authorId: questionVO.authorId,
+    authorId: normalizeAuthorId(questionVO.authorId),
     title: questionVO.title,
     content: questionVO.content,
     tags: questionVO.tags || [],
@@ -358,7 +388,7 @@ const displayList = computed(() => {
     case 'my-questions':
       // 我的问题：筛选authorId等于当前用户ID的问题
       return questionList.value
-        .filter(q => q.authorId === userId)
+        .filter(q => normalizeAuthorId(q.authorId) === normalizeAuthorId(userId))
         .map(q => ({
           id: q.questionId,
           type: 'question',
@@ -379,7 +409,7 @@ const displayList = computed(() => {
       questionList.value.forEach(q => {
         if (q.answers && q.answers.length > 0) {
           q.answers.forEach(answer => {
-            if (answer.authorId === userId) {
+            if (normalizeAuthorId(answer.authorId) === normalizeAuthorId(userId)) {
               myAnswers.push({
                 id: `${q.questionId}-${answer.answerId}`,
                 type: 'answer',
@@ -401,22 +431,6 @@ const displayList = computed(() => {
       })
       return myAnswers
     
-    case 'all':
-      // 所有问答：显示所有问题
-      return questionList.value.map(q => ({
-        id: q.questionId,
-        type: 'question',
-        questionId: q.questionId,
-        title: q.title,
-        content: q.content,
-        authorId: q.authorId,
-        authorName: q.authorName,
-        createdAt: q.createdAt,
-        likeCount: q.likeCount,
-        answerCount: q.answerCount,
-        tags: q.tags
-      }))
-    
     default:
       return []
   }
@@ -435,8 +449,6 @@ const getEmptyHint = () => {
       return '你还没有提问过，点击右上角"发起提问"开始吧'
     case 'my-answers':
       return '你还没有回答过任何问题'
-    case 'all':
-      return '还没有问答内容，点击右上角"发起提问"创建第一个问题吧'
     default:
       return ''
   }
@@ -625,7 +637,7 @@ const handleDeleteQuestion = async (item) => {
   }
   
   // 检查是否是作者
-  if (item.authorId !== userId) {
+  if (normalizeAuthorId(item.authorId) !== normalizeAuthorId(userId)) {
     showError('只能删除自己的问题')
     return
   }
@@ -682,27 +694,23 @@ onBeforeUnmount(() => {
   }
 })
 
-// 组件挂载时加载本地存储的问题列表
-onMounted(() => {
-  loadQuestionsFromStorage()
-  
-  // 如果路由中有questionId，加载该问题
-  if (route.query.questionId) {
-    const questionId = route.query.questionId
-    if (!questionList.value.find(q => q.questionId === questionId)) {
-      loading.value = true
-      getQuestionDetail(questionId)
-        .then(data => {
-          if (data) {
-            upsertQuestion(data)
-          }
-        })
-        .catch(err => {
-          console.error('获取问题详情失败', err)
-        })
-        .finally(() => {
-          loading.value = false
-        })
+// 组件挂载时从后端加载问题列表
+onMounted(async () => {
+  await loadQuestionsFromServer()
+
+  // 如果路由中有questionId但列表里没有，单独补拉详情
+  const questionId = route.query.questionId
+  if (questionId && !questionList.value.find(q => q.questionId === questionId)) {
+    loading.value = true
+    try {
+      const data = await getQuestionDetail(questionId)
+      if (data) {
+        upsertQuestion(data)
+      }
+    } catch (err) {
+      console.error('获取问题详情失败', err)
+    } finally {
+      loading.value = false
     }
   }
 })

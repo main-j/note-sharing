@@ -29,6 +29,7 @@ public interface NoteConvert {
 
 
     // --- 2. DO/Entity -> VO 转换 (用于 Service 到 Controller 响应) -----------------
+    @Mapping(target = "fileType", expression = "java(noteDO.getFileType() == null ? null : noteDO.getFileType().toLowerCase())")
     NoteVO toVO(NoteDO noteDO);
     List<NoteVO> toVOList(List<NoteDO> doList);
 

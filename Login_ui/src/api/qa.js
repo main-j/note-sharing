@@ -3,6 +3,9 @@ import service from './request'
 // 问答模块 API 封装
 
 // 问题
+export const listQuestions = () =>
+  service.get('/qa/questions').then(res => res.data.data)
+
 export const createQuestion = (payload) =>
   service.post('/qa/question', payload).then(res => res.data.data)
 

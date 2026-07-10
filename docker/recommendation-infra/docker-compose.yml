@@ -192,21 +192,24 @@ services:
       - rec-infra
 
   feast-feature-server:
-    image: python:3.11-slim
+    image: python:3.11-slim-bookworm
     container_name: rec-feast
     working_dir: /feast
     ports:
       - "${FEAST_HOST_PORT:-6566}:6566"
     volumes:
       - ../../recommendation_offline/feast_repo:/feast
+      - ../../data:/data
+      - ../../recommendation_offline/feast/materialize_online.py:/scripts/materialize_online.py:ro
     environment:
       # WSL Redis (override in .env; default tries Docker Desktop host gateway)
       FEAST_REDIS_CONNECTION: ${FEAST_REDIS_CONNECTION:-host.docker.internal:6379}
+      FEAST_REPO_PATH: /feast
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >
-      bash -c "pip install --no-cache-dir 'feast[redis]==0.47.0' &&
-      feast -c /feast apply &&
+      bash -c "pip install --no-cache-dir 'protobuf<5' 'feast[redis]==0.47.0' &&
+      python /scripts/materialize_online.py &&
       feast -c /feast serve -h 0.0.0.0 -p 6566"
     networks:
       - rec-infra

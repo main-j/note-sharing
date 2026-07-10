@@ -4,6 +4,7 @@
 import argparse
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +14,9 @@ from mlflow import MlflowClient
 
 
 def run_cmd(args: list[str]) -> None:
-    print(">>>", " ".join(args))
-    subprocess.check_call(args)
+    cmd = [sys.executable if arg == "python" else arg for arg in args]
+    print(">>>", " ".join(cmd))
+    subprocess.check_call(cmd)
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

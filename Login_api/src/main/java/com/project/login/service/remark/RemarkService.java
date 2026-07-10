@@ -108,6 +108,44 @@ public class RemarkService {
         catch (NumberFormatException e) { return 0L; }
     }
 
+    private String normalizeRemarkId(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        String id = raw.toString().trim();
+        if (id.length() >= 2 && id.startsWith("\"") && id.endsWith("\"")) {
+            id = id.substring(1, id.length() - 1);
+        }
+        return id.isEmpty() ? null : id;
+    }
+
+    private RemarkDO loadRemarkDo(String remarkId, Long noteId) {
+        if (remarkId == null || remarkId.isBlank()) {
+            return null;
+        }
+        String cacheKey = remarkIdKey + remarkId;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached instanceof RemarkDO remarkDO) {
+                redisTemplate.expire(cacheKey, Duration.ofMinutes(15));
+                return remarkDO;
+            }
+        }
+
+        RemarkDO fromDb = remarkRepository.findByRemarkId(remarkId).orElse(null);
+        if (fromDb == null && noteId != null) {
+            fromDb = remarkRepository.findRemarksByNoteIdAndIsReplyFalse(noteId).stream()
+                    .filter(item -> remarkId.equals(item.get_id()))
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (fromDb != null) {
+            redisTemplate.opsForValue().set(cacheKey, fromDb);
+            redisTemplate.expire(cacheKey, Duration.ofMinutes(15));
+        }
+        return fromDb;
+    }
+
     private RemarkVO transferDO2VO(RemarkDO remarkDO, UserDO user) {
         RemarkVO cur = remarkConvert.toVO(remarkDO);
         Long loginUserId = user.getId();
@@ -173,22 +211,10 @@ public class RemarkService {
         for (RemarkDO child : children) {
             if (child == null || child.get_id() == null) continue;
 
-            // 先查 Redis
-            RemarkDO childDO = null;
-            String redisKey = remarkIdKey + child.get_id();
-            if (redisTemplate.hasKey(redisKey)) {
-                childDO = (RemarkDO) redisTemplate.opsForValue().get(redisKey);
-                redisTemplate.expire(redisKey, Duration.ofMinutes(15));
-            } else {
-                // Redis 没有则从 MongoDB 获取
-                childDO = remarkRepository.findById(child.get_id()).orElse(null);
-                if (childDO != null) {
-                    redisTemplate.opsForValue().set(redisKey, childDO);
-                    redisTemplate.expire(redisKey, Duration.ofMinutes(15));
-                }
+            RemarkDO childDO = loadRemarkDo(child.get_id(), child.getNoteId());
+            if (childDO == null) {
+                childDO = child;
             }
-
-            if (childDO == null) continue;
 
             // 当前节点转 VO
             RemarkVO childVO = transferDO2VO(childDO, user);
@@ -210,64 +236,49 @@ public class RemarkService {
         log.info(user.toString());
         Long noteId = remarkSelectByNoteDTO.getNoteId();
         String noteKey = NoteIdKey + noteId;
-        List<String> remarkFirstLayerList = new ArrayList<>();
+        List<RemarkDO> firstLayerRemarks = new ArrayList<>();
         List<RemarkVO> result = new ArrayList<>();
 
 // --- 一级评论列表处理 ---
         log.info("initialize complete");
         if (redisTemplate.hasKey(noteKey)) {
-            // 从Redis读取一级评论ID列表
             List<Object> tmpList = redisTemplate.opsForList().range(noteKey, 0, -1);
-            log.info("found in redis"+tmpList.toString());
-            redisTemplate.expire(noteKey,Duration.ofMinutes(15));
+            log.info("found in redis" + tmpList);
+            redisTemplate.expire(noteKey, Duration.ofMinutes(15));
             if (tmpList != null) {
-                remarkFirstLayerList = tmpList.stream().map(Object::toString).toList();
-                log.info(remarkFirstLayerList.toString());
-            }
-        } else {
-            // Redis中没有则从MongoDB读取
-            log.info("finding firstLayer in mongodb");
-            List<RemarkDO> tmpRemarkDOList = remarkRepository.findRemarksByNoteIdAndIsReplyFalse(noteId);
-            log.info("get from mongodb,tmpRemarkDOList= "+tmpRemarkDOList.toString());
-            for (RemarkDO cur : tmpRemarkDOList) {
-                if (cur != null && cur.get_id() != null) {
-                    remarkFirstLayerList.add(cur.get_id());
+                for (Object rawId : tmpList) {
+                    String remarkId = normalizeRemarkId(rawId);
+                    RemarkDO curDO = loadRemarkDo(remarkId, noteId);
+                    if (curDO != null) {
+                        firstLayerRemarks.add(curDO);
+                    }
                 }
             }
-            // 将一级评论ID列表写入Redis
-            if (!remarkFirstLayerList.isEmpty()) {
-                remarkFirstLayerList.forEach(id -> redisTemplate.opsForList().rightPush(noteKey, id));
-                redisTemplate.expire(noteKey,Duration.ofMinutes(15));
+        } else {
+            log.info("finding firstLayer in mongodb");
+            firstLayerRemarks = remarkRepository.findRemarksByNoteIdAndIsReplyFalse(noteId);
+            log.info("get from mongodb,tmpRemarkDOList= " + firstLayerRemarks);
+            if (!firstLayerRemarks.isEmpty()) {
+                for (RemarkDO cur : firstLayerRemarks) {
+                    if (cur != null && cur.get_id() != null) {
+                        redisTemplate.opsForList().rightPush(noteKey, cur.get_id());
+                        redisTemplate.opsForValue().set(remarkIdKey + cur.get_id(), cur);
+                    }
+                }
+                redisTemplate.expire(noteKey, Duration.ofMinutes(15));
             }
             log.info("found the firstLayer");
         }
 
-// --- 遍历一级评论 ---
-        for (String cur : remarkFirstLayerList) {
-            RemarkDO curDO = null;
-            // 尝试从Redis获取一级评论对象
-            if (redisTemplate.hasKey(remarkIdKey + cur)) {
-                curDO = (RemarkDO) redisTemplate.opsForValue().get(remarkIdKey + cur);
-                redisTemplate.expire(remarkIdKey,Duration.ofMinutes(15));
+        for (RemarkDO curDO : firstLayerRemarks) {
+            if (curDO == null || curDO.get_id() == null) {
+                continue;
             }
-            else {
-                // Redis没有则从MongoDB获取
-                curDO = remarkRepository.findById(cur).orElse(null);
-                if (curDO != null) {
-                    redisTemplate.opsForValue().set(remarkIdKey + cur, curDO);
-                    redisTemplate.expire(remarkIdKey,Duration.ofMinutes(15));
-                }
-            }
-
-            // 如果一级评论对象为空，跳过
-            if (curDO == null) continue;
             log.info(curDO.toString());
-            // 将 DO 转换为 VO
             RemarkVO curVO = transferDO2VO(curDO, user);
-            // RemarkConvert 把 replies 标记为 ignore，需要在这里显式递归构建子树
             curVO.setReplies(buildReplyTree(curDO.get_id(), user));
             result.add(curVO);
-            log.info("show curVO"+curVO.toString());
+            log.info("show curVO" + curVO);
         }
         return result;
     }
@@ -306,7 +317,10 @@ public class RemarkService {
                 List<Object> tmpReplyList = redisTemplate.opsForList().range(replyKey, 0, -1);
                 redisTemplate.expire(replyKey,Duration.ofMinutes(15));
                 if (tmpReplyList != null) {
-                    remarkSecondLayerList = tmpReplyList.stream().map(Object::toString).toList();
+                    remarkSecondLayerList = tmpReplyList.stream()
+                            .map(this::normalizeRemarkId)
+                            .filter(Objects::nonNull)
+                            .toList();
                 }
             } else {
                 // Redis没有则从数据库加载二级评论，并写入Redis
@@ -330,7 +344,7 @@ public class RemarkService {
                     redisTemplate.expire(replyRedisKey,Duration.ofMinutes(15));
                 }
                 if (replyDO == null) {
-                    replyDO = remarkRepository.findById(replyId).orElse(null);
+                    replyDO = remarkRepository.findByRemarkId(replyId).orElse(null);
                     if (replyDO != null) {
                         redisTemplate.opsForValue().set(replyRedisKey, replyDO);
                         redisTemplate.expire(replyRedisKey,Duration.ofMinutes(15));
@@ -422,7 +436,7 @@ public class RemarkService {
     public Boolean deleteRemark(RemarkDeleteDTO remarkDeleteDTO) {
         try {
             // 1. 查找要删除的评论
-            RemarkDO remarkDO = remarkRepository.findById(remarkDeleteDTO.getId())
+            RemarkDO remarkDO = remarkRepository.findByRemarkId(remarkDeleteDTO.getId())
                     .orElseThrow(() -> new RuntimeException(
                             "Remark not found for ID: " + remarkDeleteDTO.getId()));
             Long noteId=remarkDO.getNoteId();
@@ -436,7 +450,10 @@ public class RemarkService {
                 if (redisTemplate.hasKey(replyKey)) {
                     List<Object> tmpList = redisTemplate.opsForList().range(replyKey, 0, -1);
                     if (tmpList != null) {
-                        childIds = tmpList.stream().map(Object::toString).toList();
+                        childIds = tmpList.stream()
+                                .map(this::normalizeRemarkId)
+                                .filter(Objects::nonNull)
+                                .toList();
                     }
                 }
 
@@ -515,7 +532,10 @@ public class RemarkService {
         if (redisTemplate.hasKey(replyKey)) {
             List<Object> tmpList = redisTemplate.opsForList().range(replyKey, 0, -1);
             if (tmpList != null) {
-                directChildIds = tmpList.stream().map(Object::toString).toList();
+                directChildIds = tmpList.stream()
+                        .map(this::normalizeRemarkId)
+                        .filter(Objects::nonNull)
+                        .toList();
             }
         }
 
@@ -569,7 +589,7 @@ public class RemarkService {
     public Boolean adminDeleteRemark(String remarkId) {
         try {
             // 1. 查找要删除的评论
-            RemarkDO remarkDO = remarkRepository.findById(remarkId)
+            RemarkDO remarkDO = remarkRepository.findByRemarkId(remarkId)
                     .orElseThrow(() -> new RuntimeException(
                             "Remark not found for ID: " + remarkId));
             Long noteId = remarkDO.getNoteId();
@@ -823,7 +843,7 @@ public class RemarkService {
             throw new RuntimeException("评论ID不能为空");
         }
 
-        RemarkDO targetRemark = remarkRepository.findById(remarkId)
+        RemarkDO targetRemark = remarkRepository.findByRemarkId(remarkId)
                 .orElseThrow(() -> new RuntimeException("评论不存在"));
 
         RemarkDO firstLevelRemark = findFirstLevelRemark(targetRemark);
@@ -871,7 +891,7 @@ public class RemarkService {
             return remark;
         }
 
-        Optional<RemarkDO> parent = remarkRepository.findById(remark.getParentId());
+        Optional<RemarkDO> parent = remarkRepository.findByRemarkId(remark.getParentId());
         if (parent.isEmpty()) {
  
             log.warn("找不到父评论，parentId: {}", remark.getParentId());

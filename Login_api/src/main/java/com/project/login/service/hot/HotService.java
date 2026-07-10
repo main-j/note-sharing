@@ -2,7 +2,9 @@ package com.project.login.service.hot;
 
 import com.project.login.model.vo.NoteSearchVO;
 import com.project.login.repository.NoteRepository;
+import com.project.login.mapper.NoteMapper;
 import com.project.login.mapper.NoteStatsMapper;
+import com.project.login.model.dataobject.NoteDO;
 import com.project.login.model.dataobject.NoteStatsDO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,7 +23,8 @@ public class HotService {
     private final RedisTemplate<String, Object> redis;
     private final ObjectMapper objectMapper;
     private final NoteStatsMapper noteStatsMapper;
-    private final NoteRepository noteRepository; // 注入 NoteRepository
+    private final NoteRepository noteRepository;
+    private final NoteMapper noteMapper;
 
     private static final String HOT_NOTE_KEY = "hot_notes";
     private static final String REDIS_KEY_PREFIX = "note_stats:";
@@ -30,12 +33,14 @@ public class HotService {
                       RedisTemplate<String, Object> redis,
                       ObjectMapper objectMapper,
                       NoteStatsMapper noteStatsMapper,
-                      NoteRepository noteRepository) {
+                      NoteRepository noteRepository,
+                      NoteMapper noteMapper) {
         this.redisTemplate = redisTemplate;
         this.redis = redis;
         this.objectMapper = objectMapper;
         this.noteStatsMapper = noteStatsMapper;
         this.noteRepository = noteRepository;
+        this.noteMapper = noteMapper;
     }
 
     public List<NoteSearchVO> getHotNotesDetail() {
@@ -45,13 +50,23 @@ public class HotService {
 
         Map<Long, NoteSearchVO> voMap = new LinkedHashMap<>();
 
-        // 使用 NoteRepository 批量查询
+        // 使用 Elasticsearch 批量查询，未命中时回退 MySQL
         for (Long noteId : hotNoteIds) {
-            noteRepository.findById(noteId).ifPresent(entity -> {
+            noteRepository.findById(noteId).ifPresentOrElse(entity -> {
                 NoteSearchVO vo = new NoteSearchVO();
                 vo.setNoteId(noteId);
                 vo.setTitle(entity.getTitle());
                 vo.setContentSummary(entity.getContentSummary());
+                voMap.put(noteId, vo);
+            }, () -> {
+                NoteDO note = noteMapper.selectById(noteId);
+                if (note == null) {
+                    return;
+                }
+                NoteSearchVO vo = new NoteSearchVO();
+                vo.setNoteId(noteId);
+                vo.setTitle(note.getTitle());
+                vo.setContentSummary(note.getTitle());
                 voMap.put(noteId, vo);
             });
         }

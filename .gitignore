@@ -19,8 +19,8 @@ docker/recommendation-infra/triton/model_repository/*/*/model.onnx
 
 # Local secrets
 API_KEY.txt
-.env
-.env.local
+scripts/seed/.env
+scripts/seed/cache/
 *.key
 *.secret
 

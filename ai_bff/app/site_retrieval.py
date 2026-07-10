@@ -25,6 +25,22 @@ _SITE_RETRIEVAL_INTENT_KEYWORDS = (
 
 _QUESTION_INTENT_KEYWORDS = ("问答", "问题", "相似", "qa")
 
+# Greetings / small talk should never be treated as a site search.
+_GREETING_KEYWORDS = frozenset(
+    {
+        "你好", "您好", "哈喽", "哈啰", "嗨", "hello", "hi", "hey",
+        "在吗", "在么", "在不在", "早上好", "中午好", "下午好", "晚上好", "早安", "晚安",
+        "谢谢", "感谢", "多谢", "辛苦了", "再见", "拜拜", "好的", "ok", "okay",
+    }
+)
+
+# Strong signals that the user explicitly wants us to search the site.
+# Only these should be allowed to short-circuit into the "no result" copy.
+_STRONG_RETRIEVAL_KEYWORDS = (
+    "找", "搜索", "搜一下", "搜一搜", "检索", "查找", "查一下",
+    "推荐", "有哪些", "有什么", "站内", "search", "find",
+)
+
 _BROAD_LIST_DISCOVERY_PROBES = (
     "Backend",
     "BFF",
@@ -70,6 +86,17 @@ _INTENT_PREFIXES = (
 
 _LATIN_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9+#.\-]*")
 _CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
+
+# Content inside book-title / bracket markers is usually the real topic.
+_TITLE_BRACKET_RE = re.compile(r"[《「【]([^》」】]+)[》」】]")
+
+# Instruction / filler words that pollute keyword extraction. Stripped before
+# tokenizing so the remaining runs are actual topic words.
+_INSTRUCTION_NOISE_RE = re.compile(
+    "请|帮我|帮忙|麻烦|一下|总结|摘要|概括|归纳|梳理|讲讲|讲一下|介绍|解释|说明"
+    "|当前|这篇|那篇|这个|那个|给出|列出|先给|再给|以及|关于|核心观点|核心|观点"
+    "|可执行|建议|内容|笔记|文章"
+)
 
 
 def _strip_intent_prefix(token: str) -> str:
@@ -167,6 +194,39 @@ def is_site_retrieval_intent(message: str) -> bool:
     return any(keyword in text for keyword in _SITE_RETRIEVAL_INTENT_KEYWORDS)
 
 
+def is_chitchat_message(message: str) -> bool:
+    """Greetings / small talk that must not trigger site retrieval."""
+    text = str(message or "").strip().lower().strip(" ,，。！？!?~～、.")
+    if not text:
+        return True
+    if text in _GREETING_KEYWORDS:
+        return True
+    if len(text) <= 6:
+        tokens = _extract_keywords(text)
+        if tokens and all(token.lower() in _GREETING_KEYWORDS for token in tokens):
+            return True
+    return False
+
+
+def is_explicit_search_intent(message: str) -> bool:
+    """True only when the user clearly asked us to look something up on the site.
+
+    Used to decide whether an empty retrieval should short-circuit to the
+    canonical "no result" copy. Weak signals like "笔记"/"文章" (which appear in
+    summary or chat requests) intentionally do NOT count here.
+    """
+    text = str(message or "").strip().lower()
+    if not text:
+        return False
+    return any(keyword in text for keyword in _STRONG_RETRIEVAL_KEYWORDS)
+
+
+def _topic_keywords(message: str) -> list[str]:
+    """Keyword extraction with instruction/filler words stripped out."""
+    cleaned = _INSTRUCTION_NOISE_RE.sub(" ", str(message or ""))
+    return _extract_keywords(cleaned)
+
+
 def is_broad_note_list_intent(message: str) -> bool:
     text = str(message or "")
     if not any(token in text for token in ("笔记", "文章")):
@@ -207,7 +267,19 @@ def derive_retrieval_keyword(message: str, context: dict[str, Any]) -> str | Non
     if is_broad_note_list_intent(message):
         return "笔记"
 
-    for candidate in _extract_keywords(message):
+    # 1. Content inside 《…》/「…」/【…】 is almost always the real topic.
+    for title in _TITLE_BRACKET_RE.findall(message):
+        cleaned = str(title or "").strip()
+        if len(cleaned) >= 2:
+            return cleaned
+
+    # 2. Prefer technical / English tokens (e.g. Kubernetes, RAG).
+    for token in _LATIN_TOKEN_RE.findall(message):
+        if len(token) >= 2:
+            return token
+
+    # 3. Fall back to CJK topic words, with instruction/filler words stripped.
+    for candidate in _topic_keywords(message):
         if candidate in _KEYWORD_STOP_WORDS:
             continue
         if len(candidate) >= 2:
@@ -224,11 +296,23 @@ def derive_retrieval_keyword(message: str, context: dict[str, Any]) -> str | Non
     return None
 
 
+def is_topic_lookup_message(message: str) -> bool:
+    """Short topic/keyword queries should still search the site catalog."""
+    text = str(message or "").strip()
+    if len(text) < 2 or len(text) > 48:
+        return False
+    if is_chitchat_message(text):
+        return False
+    if is_site_retrieval_intent(text):
+        return True
+    keywords = _extract_keywords(text)
+    return bool(keywords) and all(len(keyword) >= 2 for keyword in keywords)
+
+
 def should_run_site_retrieval(message: str, context: dict[str, Any]) -> bool:
-    page = _get_page(context)
-    if str(page.get("searchKeyword") or "").strip():
-        return is_site_retrieval_intent(message) or bool(message.strip())
-    return is_site_retrieval_intent(message)
+    if is_chitchat_message(message):
+        return False
+    return is_site_retrieval_intent(message) or is_topic_lookup_message(message)
 
 
 async def build_validated_note_hit(

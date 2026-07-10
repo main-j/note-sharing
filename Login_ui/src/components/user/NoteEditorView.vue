@@ -1753,7 +1753,7 @@ const selectNote = async (note) => {
   
   currentNote.value = note;
   currentTitle.value = note.title;
-  currentNoteType.value = note.fileType;
+  currentNoteType.value = (note.fileType || '').toLowerCase();
   pdfPreviewUrl.value = null;
   resetAiRewriteSession()
   
@@ -1781,12 +1781,12 @@ const selectNote = async (note) => {
       throw new Error('Failed to get file URL.');
     }
 
-    if (note.fileType === 'pdf') {
+    if (note.fileType?.toLowerCase() === 'pdf') {
       // 3. 处理 PDF 预览
       pdfPreviewUrl.value = fileUrl;
       console.log(`PDF Preview URL: ${fileUrl}`);
       emitAiContextUpdate('pdf-loaded')
-    } else if (note.fileType === 'md' && editor.value) {
+    } else if (note.fileType?.toLowerCase() === 'md' && editor.value) {
       // 4. 处理 Markdown 文件
       // 使用原始 URL，不添加时间戳参数（MinIO presigned URL 可能不支持额外参数）
       const markdownContent = await fetchFileContentByUrl(fileUrl);

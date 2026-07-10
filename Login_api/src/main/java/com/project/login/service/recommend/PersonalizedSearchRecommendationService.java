@@ -47,22 +47,13 @@ public class PersonalizedSearchRecommendationService {
                 null,
                 dto.getKeyword() == null ? List.of() : List.of(dto.getKeyword()));
         List<ContentCandidate> candidates = toNoteCandidates(base, dto.getKeyword());
-        return toNoteSearchVOs(base, runRecommendPipeline(context, candidates));
+        List<NoteSearchVO> reranked = toNoteSearchVOs(base, runRecommendPipeline(context, candidates));
+        return reranked.isEmpty() ? base : reranked;
     }
 
     public List<QuestionVO> searchQuestions(String keyword, Long userId) {
-        List<QuestionVO> base = searchQAService.searchQuestions(keyword);
-        if (userId == null || base.isEmpty()) {
-            return base;
-        }
-        RecommendContext context = queryHydrationService.hydrate(
-                userId,
-                Math.max(1, Math.min(base.size(), 50)),
-                "SEARCH",
-                null,
-                keyword == null ? List.of() : List.of(keyword));
-        List<ContentCandidate> candidates = toQuestionCandidates(base, keyword);
-        return toQuestionVOs(base, runRecommendPipeline(context, candidates));
+        // QA search already ranks by ES relevance + engagement; skip heavy recommend pipeline.
+        return searchQAService.searchQuestions(keyword);
     }
 
     private List<ContentCandidate> runRecommendPipeline(RecommendContext context, List<ContentCandidate> candidates) {

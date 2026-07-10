@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import mlflow
 import mlflow.lightgbm
 import mlflow.sklearn
@@ -27,14 +28,17 @@ FEATURE_COLUMNS = [
 
 def _predict_prob(model, x: pd.DataFrame, model_type: str):
     if model_type == "lightgbm":
-        prob = model.predict(x)
-        if hasattr(prob, "tolist"):
-            prob = prob.tolist()
-        return prob
+        if hasattr(model, "predict_proba"):
+            return model.predict_proba(x)[:, 1]
+        raw = np.asarray(model.predict(x), dtype=float)
+        if raw.max() <= 1.0 and raw.min() >= 0.0:
+            return raw
+        return 1.0 / (1.0 + np.exp(-raw))
     return model.predict_proba(x)[:, 1]
 
 
 def _metrics(y_true, prob):
+    prob = np.clip(np.asarray(prob, dtype=float), 1e-7, 1 - 1e-7)
     return {
         "auc": float(roc_auc_score(y_true, prob)),
         "pr_auc": float(average_precision_score(y_true, prob)),
@@ -72,7 +76,7 @@ def evaluate(
     candidate = _load_stage_model(tracking_uri, model_name, candidate_stage, model_type)
     cand_prob = _predict_prob(candidate, x, model_type)
     candidate_metrics = _metrics(y, cand_prob)
-    rule_baseline = _metrics(y, x["recall_score"])
+    rule_baseline = _metrics(y, x["recall_score"].clip(0.0, 1.0))
 
     production_metrics = None
     production_available = False

@@ -60,6 +60,41 @@ python recommendation_offline/automation/auto_pipeline.py \
 
 Rollout state is read by Spring from `recommendation.experiment.state-file` (default `data/pipeline/rollout_state.json`) to support 0%/5%/20%/50%/100% model traffic progression.
 
+### Gray rollout (model traffic)
+
+Edit `data/pipeline/rollout_state.json` and bump `modelRankRatio` in order:
+
+`0.0 -> 0.05 -> 0.2 -> 0.5 -> 1.0`
+
+Spring reloads the file automatically (mtime cache); no restart required. Assignment is deterministic by `userId % 100`.
+
+After each step, verify:
+
+```bash
+py -3 scripts/recommendation/verify_rollout_acceptance.py --expected-ratio 0.05
+```
+
+Watch feed fields: `modelEnabled`, `variant`, `modelVersion`, empty results, and ranker distribution.
+
+### Full acceptance + rollback
+
+Full launch criteria: Milvus recall on, Feast online features on, ONNX or Triton inference ready, target `modelRankRatio`, stable feed API, exposure events on `rec_user_exposure`.
+
+```bash
+py -3 scripts/recommendation/verify_rollout_acceptance.py --expected-ratio 1.0
+```
+
+Rollback to rule-only ranking:
+
+```json
+{
+  "modelRankRatio": 0.0,
+  "modelEnabled": false
+}
+```
+
+Optional infra rollback in `application.yml`: set `milvus.enabled`, `feast.enabled`, and `triton.enabled` (or `onnx.enabled`) to `false`.
+
 ## MLOps service mode
 
 For production-like local development, run the pipeline through the independent Python MLOps service instead of the Spring JVM:

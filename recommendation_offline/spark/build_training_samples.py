@@ -37,6 +37,8 @@ def build_samples(input_dir: Path, output: Path) -> None:
     events = spark.read.parquet(str(events_path)).filter(F.col("user_id").isNotNull())
     stats = spark.read.parquet(str(stats_path))
     events = events.withColumn("item_id_long", F.col("item_id").cast("long"))
+    if "tag_match_score" not in events.columns and "tagMatchScore" in events.columns:
+        events = events.withColumnRenamed("tagMatchScore", "tag_match_score")
 
     base = (
         events.join(stats, events.item_id_long == stats.note_id, "left")
@@ -71,8 +73,9 @@ def build_samples(input_dir: Path, output: Path) -> None:
         "label",
     )
     output.parent.mkdir(parents=True, exist_ok=True)
-    final_df.write.mode("overwrite").parquet(str(output))
-    print(f"Wrote training samples to {output}")
+    pdf = final_df.toPandas()
+    pdf.to_parquet(output, index=False)
+    print(f"Wrote {len(pdf)} training samples to {output}")
     spark.stop()
 
 

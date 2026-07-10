@@ -17,7 +17,7 @@ def export(mysql_url: str, output_dir: Path) -> None:
             FROM note_stats
         """,
         "user_follow.parquet": """
-            SELECT follower_id, followee_id, created_at
+            SELECT follower_id, followee_id, follow_time AS created_at
             FROM user_follow
         """,
         "notes.parquet": """

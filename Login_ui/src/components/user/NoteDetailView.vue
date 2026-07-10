@@ -73,7 +73,7 @@
                 <path d="M2.5 1A1.5 1.5 0 001 2.5v11A1.5 1.5 0 002.5 15h6.086a1.5 1.5 0 001.06-.44l4.915-4.914A1.5 1.5 0 0015 7.586V2.5A1.5 1.5 0 0013.5 1h-11zM2 2.5a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v7.086a.5.5 0 01-.146.353l-4.915 4.915a.5.5 0 01-.353.146H2.5a.5.5 0 01-.5-.5v-11z"/>
                 <path d="M5.5 6a.5.5 0 000 1h5a.5.5 0 000-1h-5zM5 8.5a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zm0 2a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5z"/>
               </svg>
-              {{ stats.comments || 0 }} 评论
+              {{ displayCommentCount }} 评论
             </span>
           </div>
         </div>
@@ -116,7 +116,7 @@
         <div class="comments-section">
           <div class="comments-header">
             <h2 class="comments-title">评论</h2>
-            <span class="comments-count">({{ comments.length || 0 }})</span>
+            <span class="comments-count">({{ displayCommentCount }})</span>
           </div>
 
           <!-- 发表评论表单 -->
@@ -239,7 +239,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getFileUrlByNoteId, getNoteStats, changeNoteStat } from '@/api/note'
 import { getRemarksByNote, insertRemark, deleteRemark, likeRemark, cancelLikeRemark } from '@/api/remark'
@@ -313,6 +313,19 @@ const fileUrl = ref(null)
 const markdownContent = ref('')
 const fileUnavailable = ref(false)
 
+const countRemarkTree = (items) => {
+  if (!items?.length) return 0
+  return items.reduce((sum, item) => sum + 1 + countRemarkTree(item.replies), 0)
+}
+
+const displayCommentCount = computed(() => {
+  if (comments.value.length > 0) {
+    const treeCount = countRemarkTree(comments.value)
+    if (treeCount > 0) return treeCount
+  }
+  return stats.value.comments || 0
+})
+
 const extractPlainText = (value) => {
   if (!value) return ''
   if (typeof document === 'undefined') return String(value).replace(/\s+/g, ' ').trim()
@@ -373,8 +386,6 @@ const mdParser = new MarkdownIt({
   typographer: true
 })
 
-const ACTION_KEY_PREFIX = 'note_stat_action'
-
 const getCurrentUserId = () => {
   const storeId = userStore.userInfo?.id
   if (storeId) return storeId
@@ -382,30 +393,6 @@ const getCurrentUserId = () => {
     return JSON.parse(localStorage.getItem('userInfo') || '{}')?.id || null
   } catch (err) {
     return null
-  }
-}
-
-const getActionStorageKey = (field) => {
-  const userId = getCurrentUserId()
-  const noteId = noteDetail.value?.noteId || props.noteId
-  if (!userId || !noteId) return null
-  return `${ACTION_KEY_PREFIX}:${field}:${noteId}:${userId}`
-}
-
-const restoreActionState = () => {
-  const likeKey = getActionStorageKey('likes')
-  const favoriteKey = getActionStorageKey('favorites')
-  isLiked.value = likeKey ? localStorage.getItem(likeKey) === '1' : false
-  isFavorited.value = favoriteKey ? localStorage.getItem(favoriteKey) === '1' : false
-}
-
-const persistActionState = (field, active) => {
-  const key = getActionStorageKey(field)
-  if (!key) return
-  if (active) {
-    localStorage.setItem(key, '1')
-  } else {
-    localStorage.removeItem(key)
   }
 }
 
@@ -424,6 +411,13 @@ const updateStatsFromResponse = (statsData) => {
     likes: statsData.likes ?? stats.value.likes ?? 0,
     favorites: statsData.favorites ?? stats.value.favorites ?? 0,
     comments: statsData.comments ?? stats.value.comments ?? 0
+  }
+
+  if (statsData.likedOrNot != null) {
+    isLiked.value = statsData.likedOrNot
+  }
+  if (statsData.favoritedOrNot != null) {
+    isFavorited.value = statsData.favoritedOrNot
   }
   
   // 当获取到作者名称后，尝试获取作者的userId
@@ -503,11 +497,6 @@ const handleToggleStat = async (field) => {
       const updated = await changeNoteStat(noteDetail.value.noteId, userId, field, delta)
       updateStatsFromResponse(updated)
       
-      // 更新状态
-      const newState = delta > 0
-      flagRef.value = newState
-      persistActionState(field, newState)
-      
       // 通知父组件统计信息已更新
       emit('stats-updated', {
         noteId: noteDetail.value.noteId,
@@ -557,17 +546,17 @@ const fetchNoteDetail = async () => {
 
     console.log('获取笔记详情，noteId:', noteId)
 
-    // 优先使用从搜索结果传递过来的统计信息
+    // 优先使用从搜索结果传递过来的统计信息，但仍向后端拉取用户点赞/收藏状态
+    const userId = getCurrentUserId()
     if (props.initialStats) {
       updateStatsFromResponse(props.initialStats)
-    } else {
-      // 如果没有传递统计信息，则从API获取
-      try {
-        const statsData = await getNoteStats(noteId)
-        updateStatsFromResponse(statsData)
-      } catch (statsError) {
-        console.error('获取统计信息失败:', statsError)
-        // 统计信息获取失败不影响主要内容显示
+    }
+    try {
+      const statsData = await getNoteStats(noteId, userId)
+      updateStatsFromResponse(statsData)
+    } catch (statsError) {
+      console.error('获取统计信息失败:', statsError)
+      if (!props.initialStats) {
         stats.value = {
           authorName: '未知作者',
           views: 0,
@@ -595,7 +584,7 @@ const fetchNoteDetail = async () => {
     }
 
     // 从后端返回的数据中获取fileType和url
-    const fileType = noteInfo.fileType || 'md'
+    const fileType = (noteInfo.fileType || 'md').toLowerCase()
     const urlString = noteInfo.url || ''
     fileUnavailable.value = noteInfo.fileExists === false || !urlString
 
@@ -608,7 +597,6 @@ const fetchNoteDetail = async () => {
         noteId: noteId,
         createdAt: noteInfo.createdAt || null
       }
-      restoreActionState()
       // 即使不支持的文件类型，也要加载评论列表
       await fetchComments(noteId)
       // 订阅 WebSocket
@@ -627,7 +615,6 @@ const fetchNoteDetail = async () => {
         noteId: noteId,
         createdAt: noteInfo.createdAt || null
       }
-      restoreActionState()
       await fetchComments(noteId)
       subscribeToComments()
       emitAiContextUpdate('load')
@@ -642,7 +629,6 @@ const fetchNoteDetail = async () => {
       noteId: noteId,
       createdAt: noteInfo.createdAt || null
     }
-    restoreActionState()
 
     // 加载评论列表（直接传递noteId，确保使用正确的笔记ID）
     await fetchComments(noteId)
@@ -822,6 +808,11 @@ const fetchComments = async (noteIdParam = null) => {
     
     if (currentNoteIdNum === noteId) {
       comments.value = filteredRemarks
+      const treeCount = countRemarkTree(filteredRemarks)
+      if (treeCount > 0 && stats.value.comments !== treeCount) {
+        stats.value.comments = treeCount
+        emit('stats-updated', { ...stats.value })
+      }
     } else {
       console.warn('[fetchComments] 警告：noteId已变化，丢弃旧的评论数据。当前:', currentNoteIdNum, '请求的:', noteId)
       comments.value = []

@@ -162,6 +162,7 @@ const logRef = ref(null)
 const inputRef = ref(null)
 const isStreaming = ref(false)
 const streamAbortController = ref(null)
+const activeAssistantMessageId = ref(null)
 const pendingRewriteRequests = new Map()
 const qaDraftLoading = ref(false)
 const qaDraftPreview = ref(null)
@@ -310,7 +311,7 @@ function appendAssistantMessage(prompt = '') {
     id,
     role: 'assistant',
     roleLabel: 'AI',
-    content: '',
+    content: '正在思考…',
     timeLabel: nowLabel(),
     source: 'BFF',
     prompt,
@@ -507,13 +508,34 @@ async function streamChatFromBff(message, assistantMessageId) {
   }
 }
 
+function stopStreaming(assistantMessageId) {
+  if (streamAbortController.value) {
+    streamAbortController.value.abort()
+  }
+  streamAbortController.value = null
+  isStreaming.value = false
+
+  if (!assistantMessageId) return
+  const existing = messages.value.find(item => item.id === assistantMessageId)
+  if (!existing) return
+
+  const partial = String(existing.content || '').trim()
+  updateAssistantMessage(assistantMessageId, {
+    content: partial ? buildStoppedContent(assistantMessageId) : AI_MESSAGES.stopped,
+    source: 'BFF',
+    contentFormat: 'plain'
+  })
+}
+
 function finalizeAssistantMessage(assistantMessageId, result) {
   if (!assistantMessageId) return
   const existing = messages.value.find(item => item.id === assistantMessageId)
   if (!existing) return
 
+  const resolvedContent = String(result?.answer || existing.content || '').trim()
+
   updateAssistantMessage(assistantMessageId, {
-    content: result?.answer || existing.content || '',
+    content: resolvedContent || AI_MESSAGES.bffUnavailable,
     contentFormat: resolveAssistantContentFormat(result?.answerFormat),
     citations: result?.citations || existing.citations || [],
     answerLinks: result?.answerLinks || existing.answerLinks || [],
@@ -636,6 +658,7 @@ async function runPrompt(prompt) {
   const assistantMessageId = appendAssistantMessage(content)
   streamAbortController.value = new AbortController()
   isStreaming.value = true
+  activeAssistantMessageId.value = assistantMessageId
   requestSeq += 1
   const currentRequestSeq = requestSeq
 
@@ -661,6 +684,7 @@ async function runPrompt(prompt) {
   } finally {
     streamAbortController.value = null
     isStreaming.value = false
+    activeAssistantMessageId.value = null
   }
 }
 
@@ -738,10 +762,7 @@ function retryPrompt(prompt) {
 
 function sendMessage() {
   if (isStreaming.value) {
-    if (streamAbortController.value) {
-      streamAbortController.value.abort()
-    }
-    isStreaming.value = false
+    stopStreaming(activeAssistantMessageId.value)
     return
   }
 

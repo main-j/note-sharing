@@ -19,7 +19,7 @@
 - `AI_MODEL_MAX_TOKENS`：默认 `1200`
 - `AI_MODEL_TIMEOUT`：默认 `30`
 - `AI_BFF_HOST`：默认 `0.0.0.0`
-- `AI_BFF_PORT`：默认 `8000`
+- `AI_BFF_PORT`：默认 `8003`（本地避开 Triton 8000）
 - `AI_JWT_SECRET`：可选，用于验证 HS256 JWT
 - `AI_ALLOWED_ORIGINS`：逗号分隔的前端来源，示例包含 `http://localhost:8080` 和 `http://localhost:8082`
 
@@ -39,7 +39,44 @@ AI_MODEL_TIMEOUT=30
 
 ## 启动
 
-```bash
-pip install -r ai_bff/requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+**前置：** `Login_api` 已在 `http://localhost:8080` 运行。
+
+1. 复制环境变量并填写密钥：
+
+```powershell
+copy ai_bff\.env.example ai_bff\.env
+# 编辑 ai_bff/.env：
+#   AI_MODEL_API_KEY=你的 DeepSeek/方舟 Key
+#   AI_JWT_SECRET=与 Login_api application.yml 中 jwt.secret 相同
 ```
+
+2. 默认端口 **8003**（避免与 Triton 的 8000 冲突）。前端默认也指向 `http://localhost:8003`。
+
+3. 一键启动（推荐）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start-ai-bff.ps1 -InstallDeps
+```
+
+或手动：
+
+```bash
+cd ai_bff
+py -3 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8003
+```
+
+4. 验证：
+
+```powershell
+Invoke-RestMethod http://localhost:8003/health
+```
+
+5. 前端（`Login_ui` 开发服默认 8082）需配置 BFF 地址（已提供 `.env.example`）：
+
+```env
+VUE_APP_AI_BFF_ORIGIN=http://localhost:8003
+```
+
+保存为 `Login_ui/.env.local` 后重启 `npm run serve`。

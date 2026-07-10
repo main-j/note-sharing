@@ -1,4 +1,4 @@
-const DEFAULT_AI_BFF_ORIGIN = 'http://localhost:8000'
+const DEFAULT_AI_BFF_ORIGIN = 'http://localhost:8003'
 
 export const AI_PROTOCOL_VERSION = '1.0'
 

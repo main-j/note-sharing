@@ -24,6 +24,9 @@ import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import redis.clients.jedis.Jedis;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -52,6 +55,14 @@ public class BehaviorSearchJob {
     private static final String FLINK_TARGET = System.getenv().getOrDefault("FLINK_EXECUTION_TARGET", "remote");
     private static final String FLINK_REST_ADDRESS = System.getenv().getOrDefault("FLINK_REST_ADDRESS", "127.0.0.1");
     private static final int FLINK_REST_PORT = Integer.parseInt(System.getenv().getOrDefault("FLINK_REST_PORT", "8081"));
+
+    static {
+        try {
+            configureLocalDevEnvironment();
+        } catch (Exception e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     public static void main(String[] args) throws Exception {
 
@@ -248,10 +259,27 @@ public class BehaviorSearchJob {
     }
 
     /**
+     * Provides a minimal Hadoop home for Flink/Hadoop code paths on Windows.
+     * Use JDK 17 for this job; Hadoop/Flink 1.19 is not compatible with JDK 25.
+     */
+    private static void configureLocalDevEnvironment() throws Exception {
+        if (System.getProperty("hadoop.home.dir") == null
+                && (System.getenv("HADOOP_HOME") == null || System.getenv("HADOOP_HOME").isBlank())) {
+            Path hadoopHome = Paths.get(System.getProperty("user.home"), ".flink-dev", "hadoop");
+            Files.createDirectories(hadoopHome.resolve("bin"));
+            System.setProperty("hadoop.home.dir", hadoopHome.toString());
+        }
+        System.setProperty("hadoop.security.authentication", "simple");
+    }
+
+    /**
      * MiniCluster 默认 TaskManager 总内存较小，多 source + connect + keyBy 时容易触发
      * {@code Insufficient number of network buffers}，需显式放大 process / network 相关配置。
      */
     private static void applyMiniClusterResourceTuning(Configuration conf) {
+        conf.setString("security.delegation.tokens.enabled", "false");
+        conf.setString("security.delegation.token.provider.hadoopfs.enabled", "false");
+        conf.setString("security.delegation.token.provider.hbase.enabled", "false");
         conf.setString("taskmanager.memory.process.size", "2048m");
         conf.setString("taskmanager.memory.network.min", "512m");
         conf.setString("taskmanager.memory.network.max", "512m");

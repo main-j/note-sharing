@@ -10,4 +10,8 @@ public class NoteStatsVO {
     private Long likes;
     private Long favorites;
     private Long comments;
+    /** 当前用户是否已点赞（仅当请求携带 userId 时有值） */
+    private Boolean likedOrNot;
+    /** 当前用户是否已收藏（仅当请求携带 userId 时有值） */
+    private Boolean favoritedOrNot;
 }

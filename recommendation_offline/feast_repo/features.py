@@ -1,12 +1,12 @@
 from datetime import timedelta
 
-from feast import Entity, FeatureService, FeatureView, Field, FileSource
+from feast import Entity, FeatureService, FeatureView, Field, FileSource, ValueType
 from feast.types import Float32, Int64, String
 
-user = Entity(name="user_id", join_keys=["user_id"])
-item = Entity(name="item_id", join_keys=["item_id"])
-author = Entity(name="author_id", join_keys=["author_id"])
-user_item = Entity(name="user_item_key", join_keys=["user_item_key"])
+user = Entity(name="user_id", join_keys=["user_id"], value_type=ValueType.INT64)
+item = Entity(name="item_id", join_keys=["item_id"], value_type=ValueType.INT64)
+author = Entity(name="author_id", join_keys=["author_id"], value_type=ValueType.INT64)
+user_item = Entity(name="user_item_key", join_keys=["user_item_key"], value_type=ValueType.STRING)
 
 user_source = FileSource(
     name="user_source",

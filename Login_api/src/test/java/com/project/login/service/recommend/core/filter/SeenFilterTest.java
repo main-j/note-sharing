@@ -27,4 +27,20 @@ class SeenFilterTest {
 
         assertThat(seenFilter.allow(context, candidate)).isFalse();
     }
+
+    @Test
+    void allow_shouldIgnoreSeenItemsForSearchScene() {
+        RecommendContext context = RecommendContext.builder()
+                .userId(1L)
+                .scene("SEARCH")
+                .seenItemKeys(Set.of("NOTE:100"))
+                .build();
+        ContentCandidate candidate = ContentCandidate.builder()
+                .itemType(ItemType.NOTE)
+                .itemId("100")
+                .itemKey("NOTE:100")
+                .build();
+
+        assertThat(seenFilter.allow(context, candidate)).isTrue();
+    }
 }

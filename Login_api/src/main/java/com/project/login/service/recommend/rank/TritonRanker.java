@@ -83,6 +83,9 @@ public class TritonRanker implements Ranker {
         if (!data.isArray() || data.isEmpty()) {
             throw new IllegalStateException("triton infer response has no output data");
         }
+        if (data.size() >= 2) {
+            return (float) data.get(1).asDouble(0.0);
+        }
         return (float) data.get(0).asDouble(0.0);
     }
 

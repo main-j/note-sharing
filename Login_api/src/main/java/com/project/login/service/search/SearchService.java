@@ -37,7 +37,7 @@ public class SearchService {
 
     public List<NoteSearchVO> searchNotes(NoteSearchDTO dto) {
         String keyword = dto.getKeyword();
-        List<ScoredNote> scoredNotes = new ArrayList<>();
+        List<ScoredNote> rawScoredNotes = new ArrayList<>();
 
         try {
             var response = esClient.search(s -> s
@@ -54,6 +54,19 @@ public class SearchService {
 
             response.hits().hits().forEach(hit -> {
                 NoteSearchVO vo = convert.toSearchVO(hit.source());
+                if (vo == null) {
+                    return;
+                }
+                if (vo.getNoteId() == null && hit.id() != null && !hit.id().isBlank()) {
+                    try {
+                        vo.setNoteId(Long.valueOf(hit.id()));
+                    } catch (NumberFormatException ignored) {
+                        return;
+                    }
+                }
+                if (vo.getNoteId() == null) {
+                    return;
+                }
                 double score = hit.score() != null ? hit.score() : 0.0;
 
                 // 默认 contentSummary 为 title
@@ -61,20 +74,23 @@ public class SearchService {
                     vo.setContentSummary(vo.getTitle());
                 }
 
-                scoredNotes.add(new ScoredNote(vo, score));
+                rawScoredNotes.add(new ScoredNote(vo, score));
             });
 
         } catch (IOException e) {
             throw new RuntimeException("搜索失败", e);
         }
 
-        if (scoredNotes.isEmpty()) return Collections.emptyList();
+        if (rawScoredNotes.isEmpty()) return Collections.emptyList();
+
+        List<ScoredNote> scoredNotes = dedupeByNoteId(rawScoredNotes);
 
         // ==========================
         // 批量加载 Redis 统计数据
         // ==========================
         List<Long> noteIds = scoredNotes.stream()
                 .map(n -> n.vo.getNoteId())
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         Map<Long, NoteStatsDO> statsMap = loadStatsFromRedisThenMySQL(noteIds);
@@ -82,6 +98,9 @@ public class SearchService {
         // 将统计数据写入 VO
         scoredNotes.forEach(sn -> {
             NoteStatsDO stats = statsMap.get(sn.vo.getNoteId());
+            if (stats == null) {
+                return;
+            }
             sn.vo.setAuthorName(stats.getAuthorName());
             sn.vo.setViewCount(stats.getViews().intValue());
             sn.vo.setLikeCount(stats.getLikes().intValue());
@@ -97,12 +116,12 @@ public class SearchService {
         // ==========================
         scoredNotes.sort((a, b) -> {
             double scoreA = a.score
-                    + a.vo.getViewCount() + a.vo.getLikeCount()
-                    + a.vo.getFavoriteCount() + a.vo.getCommentCount()
+                    + safeInt(a.vo.getViewCount()) + safeInt(a.vo.getLikeCount())
+                    + safeInt(a.vo.getFavoriteCount()) + safeInt(a.vo.getCommentCount())
                     + recencyScore(a.updatedAt);
             double scoreB = b.score
-                    + b.vo.getViewCount() + b.vo.getLikeCount()
-                    + b.vo.getFavoriteCount() + b.vo.getCommentCount()
+                    + safeInt(b.vo.getViewCount()) + safeInt(b.vo.getLikeCount())
+                    + safeInt(b.vo.getFavoriteCount()) + safeInt(b.vo.getCommentCount())
                     + recencyScore(b.updatedAt);
             return Double.compare(scoreB, scoreA);
         });
@@ -138,11 +157,14 @@ public class SearchService {
     }
 
     private void writeStatsToRedis(String key, HashOperations<String, Object, Object> ops, NoteStatsDO db) {
-        ops.put(key, "authorName", db.getAuthorName());
+        ops.put(key, "authorName", db.getAuthorName() != null ? db.getAuthorName() : "未知作者");
         ops.put(key, "views", String.valueOf(db.getViews()));
         ops.put(key, "likes", String.valueOf(db.getLikes()));
         ops.put(key, "favorites", String.valueOf(db.getFavorites()));
         ops.put(key, "comments", String.valueOf(db.getComments()));
+        if (db.getUpdatedAt() != null) {
+            ops.put(key, "updatedAt", db.getUpdatedAt().toString());
+        }
         ops.put(key, "last_activity_at", db.getLastActivityAt() == null ? "" : db.getLastActivityAt().toString());
         ops.put(key, "version", String.valueOf(db.getVersion()));
         redisTemplate.expire(key, 7, TimeUnit.DAYS);
@@ -155,7 +177,7 @@ public class SearchService {
     private NoteStatsDO mapToStats(Long id, Map<Object, Object> map) {
         NoteStatsDO stats = new NoteStatsDO();
         stats.setNoteId(id);
-        stats.setAuthorName(map.get("authorName").toString());
+        stats.setAuthorName(map.getOrDefault("authorName", "未知作者").toString());
         stats.setViews(Long.parseLong(map.getOrDefault("views", "0").toString()));
         stats.setLikes(Long.parseLong(map.getOrDefault("likes", "0").toString()));
         stats.setFavorites(Long.parseLong(map.getOrDefault("favorites", "0").toString()));
@@ -187,6 +209,22 @@ public class SearchService {
         long millis = java.time.Duration.between(updatedAt, LocalDateTime.now()).toMillis();
         double days = millis / 86400000.0;
         return 1.0 / (days + 1.0);
+    }
+
+    private int safeInt(Integer value) {
+        return value != null ? value : 0;
+    }
+
+    private List<ScoredNote> dedupeByNoteId(List<ScoredNote> scoredNotes) {
+        Map<Long, ScoredNote> deduped = new LinkedHashMap<>();
+        for (ScoredNote scoredNote : scoredNotes) {
+            Long noteId = scoredNote.vo.getNoteId();
+            if (noteId == null) {
+                continue;
+            }
+            deduped.merge(noteId, scoredNote, (left, right) -> left.score >= right.score ? left : right);
+        }
+        return new ArrayList<>(deduped.values());
     }
 
     private static class ScoredNote {

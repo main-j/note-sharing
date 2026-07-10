@@ -1,14 +1,42 @@
 package com.project.login.config;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
+import org.springframework.data.mongodb.core.convert.MongoCustomConversions;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.Date;
 
 @Configuration
-// 开启审计功能，这样实体类上的 @CreatedDate 和 @LastModifiedDate 才会生效
 @EnableMongoAuditing
 public class MongoConfig {
 
-    // application.yml 中已经配置了 uri，
-    // Spring Boot 会自动配置 MongoTemplate
-    // 除非需要自定义类型转换器 (Converters) 或者配置事务管理器
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
+
+    @Bean
+    public MongoCustomConversions mongoCustomConversions() {
+        return new MongoCustomConversions(Arrays.asList(
+                new DateToLocalDateTimeConverter(),
+                new LocalDateTimeToDateConverter()
+        ));
+    }
+
+    static class DateToLocalDateTimeConverter implements Converter<Date, LocalDateTime> {
+        @Override
+        public LocalDateTime convert(Date source) {
+            return Instant.ofEpochMilli(source.getTime()).atZone(APP_ZONE).toLocalDateTime();
+        }
+    }
+
+    static class LocalDateTimeToDateConverter implements Converter<LocalDateTime, Date> {
+        @Override
+        public Date convert(LocalDateTime source) {
+            return Date.from(source.atZone(APP_ZONE).toInstant());
+        }
+    }
 }

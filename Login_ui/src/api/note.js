@@ -197,9 +197,11 @@ export const getFileUrlByNoteId = (noteId) => {
  * [对应后端: GET /noting/note-stats/{noteId}]
  * 获取笔记统计信息 (返回 NoteStatsVO)
  * @param {number} noteId - 笔记ID
+ * @param {number} [userId] - 当前用户ID，传入时返回 likedOrNot / favoritedOrNot
  */
-export const getNoteStats = (noteId) => {
-    return service.get(`/noting/note-stats/${noteId}`)
+export const getNoteStats = (noteId, userId) => {
+    const params = userId ? { userId } : undefined;
+    return service.get(`/noting/note-stats/${noteId}`, { params })
         .then(res => res.data.data);
 };
 

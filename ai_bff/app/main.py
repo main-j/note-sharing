@@ -22,6 +22,7 @@ from .schemas import (
     SiteSearchRequest,
 )
 from .settings import settings
+from .copy import BFF_UNAVAILABLE
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -73,14 +74,14 @@ def _auth_token(authorization: str | None) -> str | None:
 
 def _stream_sse(data: dict[str, Any]):
     async def generator():
-        answer = data.get("answer", "")
+        answer = str(data.get("answer") or "").strip()
         if not answer:
-            yield "data: {}\n\n"
-            return
+            answer = BFF_UNAVAILABLE
 
-        chunks = answer.split()
-        for index, chunk in enumerate(chunks):
-            payload = {"delta": chunk + (" " if index < len(chunks) - 1 else "")}
+        # Fixed-size chunks work for both Latin and CJK text.
+        chunk_size = 48
+        for index in range(0, len(answer), chunk_size):
+            payload = {"delta": answer[index : index + chunk_size]}
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0.02)
 

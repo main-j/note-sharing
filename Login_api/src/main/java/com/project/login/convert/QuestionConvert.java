@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.stream.Collectors;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -38,18 +39,49 @@ public class QuestionConvert {
         vo.setTags(doObj.getTags());
         vo.setCreatedAt(doObj.getCreatedAt());
 
-        vo.setLikeCount(doObj.getLikes().size());
-        vo.setFavoriteCount(doObj.getFavorites().size());
+        vo.setLikeCount(doObj.getLikes() == null ? 0 : doObj.getLikes().size());
+        vo.setFavoriteCount(doObj.getFavorites() == null ? 0 : doObj.getFavorites().size());
         
         // 设置回答数量
         vo.setAnswerCount(doObj.getAnswers() != null ? doObj.getAnswers().size() : 0);
 
-        vo.setAnswers(
-                doObj.getAnswers().stream()
-                        .map(this::toAnswerVO)
-                        .collect(Collectors.toList())
-        );
+        if (doObj.getAnswers() == null || doObj.getAnswers().isEmpty()) {
+            vo.setAnswers(List.of());
+        } else {
+            vo.setAnswers(
+                    doObj.getAnswers().stream()
+                            .map(this::toAnswerVO)
+                            .collect(Collectors.toList())
+            );
+        }
 
+        return vo;
+    }
+
+    /** Lightweight conversion for search/list endpoints — avoids nested answer lookups. */
+    public QuestionVO toQuestionSearchVO(QuestionDO doObj) {
+        if (doObj == null) {
+            return null;
+        }
+
+        QuestionVO vo = new QuestionVO();
+        vo.setQuestionId(doObj.getQuestionId());
+        vo.setAuthorId(doObj.getAuthorId());
+        try {
+            String authorName = userMapper.selectNameById(doObj.getAuthorId());
+            vo.setAuthorName(authorName != null ? authorName : "用户 #" + doObj.getAuthorId());
+        } catch (Exception e) {
+            log.warn("获取提问者用户名失败 authorId={}", doObj.getAuthorId(), e);
+            vo.setAuthorName("用户 #" + doObj.getAuthorId());
+        }
+        vo.setTitle(doObj.getTitle());
+        vo.setContent(doObj.getContent());
+        vo.setTags(doObj.getTags());
+        vo.setCreatedAt(doObj.getCreatedAt());
+        vo.setLikeCount(doObj.getLikes() == null ? 0 : doObj.getLikes().size());
+        vo.setFavoriteCount(doObj.getFavorites() == null ? 0 : doObj.getFavorites().size());
+        vo.setAnswerCount(doObj.getAnswers() == null ? 0 : doObj.getAnswers().size());
+        vo.setAnswers(List.of());
         return vo;
     }
 
@@ -67,13 +99,17 @@ public class QuestionConvert {
         }
         vo.setContent(a.getContent());
         vo.setCreatedAt(a.getCreatedAt());
-        vo.setLikeCount(a.getLikes().size());
+        vo.setLikeCount(a.getLikes() == null ? 0 : a.getLikes().size());
 
-        vo.setComments(
-                a.getComments().stream()
-                        .map(this::toCommentVO)
-                        .collect(Collectors.toList())
-        );
+        if (a.getComments() == null || a.getComments().isEmpty()) {
+            vo.setComments(List.of());
+        } else {
+            vo.setComments(
+                    a.getComments().stream()
+                            .map(this::toCommentVO)
+                            .collect(Collectors.toList())
+            );
+        }
 
         return vo;
     }
@@ -92,13 +128,17 @@ public class QuestionConvert {
         }
         vo.setContent(c.getContent());
         vo.setCreatedAt(c.getCreatedAt());
-        vo.setLikeCount(c.getLikes().size());
+        vo.setLikeCount(c.getLikes() == null ? 0 : c.getLikes().size());
 
-        vo.setReplies(
-                c.getReplies().stream()
-                        .map(this::toReplyVO)
-                        .collect(Collectors.toList())
-        );
+        if (c.getReplies() == null || c.getReplies().isEmpty()) {
+            vo.setReplies(List.of());
+        } else {
+            vo.setReplies(
+                    c.getReplies().stream()
+                            .map(this::toReplyVO)
+                            .collect(Collectors.toList())
+            );
+        }
 
         return vo;
     }
@@ -117,7 +157,7 @@ public class QuestionConvert {
         }
         vo.setContent(r.getContent());
         vo.setCreatedAt(r.getCreatedAt());
-        vo.setLikeCount(r.getLikes().size());
+        vo.setLikeCount(r.getLikes() == null ? 0 : r.getLikes().size());
 
         return vo;
     }

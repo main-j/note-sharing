@@ -19,7 +19,12 @@ def export_model(tracking_uri: str, model_name: str, model_stage: str, output: P
     initial_types = [("input", FloatTensorType([None, FEATURE_DIM]))]
     if model_type == "lightgbm":
         booster = mlflow.lightgbm.load_model(model_uri)
-        onnx_model = onnxmltools.convert_lightgbm(booster, initial_types=initial_types, target_opset=13)
+        onnx_model = onnxmltools.convert_lightgbm(
+            booster,
+            initial_types=initial_types,
+            target_opset=13,
+            zipmap=False,
+        )
     else:
         model = mlflow.sklearn.load_model(model_uri)
         onnx_model = convert_sklearn(model, initial_types=initial_types, target_opset=13)

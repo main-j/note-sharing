@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, TypedDict
 
@@ -14,11 +15,12 @@ from .reference_markers import inject_markers_from_citations, resolve_reference_
 from .site_retrieval import (
     derive_retrieval_keyword,
     format_retrieval_facts,
+    is_explicit_search_intent,
     retrieve_site_content,
     should_include_questions,
     should_run_site_retrieval,
 )
-from .copy import NO_RESULT, REFUSAL, WRITE_DENIED
+from .copy import BFF_UNAVAILABLE, NO_RESULT, REFUSAL, WRITE_DENIED
 from .schemas import (
     ChatRequest,
     CitationRoute,
@@ -43,6 +45,7 @@ class AgentState(TypedDict, total=False):
     route: dict[str, Any] | None
     citations: list[dict[str, Any]]
     site_retrieval_empty: bool
+    retrieval_intent: bool
 
 
 def _get_context(request: dict[str, Any]) -> dict[str, Any]:
@@ -128,9 +131,53 @@ def _extract_keywords(text: str) -> list[str]:
     return candidates[:8] or ["知识整理", "AI 协作", "笔记助手"]
 
 
+_TITLE_BRACKET_RE = re.compile(r"[《「【]([^》」】]+)[》」】]")
+
+_SUMMARY_INTENT_KEYWORDS = (
+    "总结",
+    "摘要",
+    "概括",
+    "归纳",
+    "梳理",
+    "核心观点",
+    "讲讲",
+    "介绍",
+    "解释",
+    "是什么",
+)
+
+
+def _wants_summary(message: str) -> bool:
+    return any(keyword in message for keyword in _SUMMARY_INTENT_KEYWORDS)
+
+
 FOLIO_ASSISTANT_IDENTITY = "笔记分享站站内助手"
 OFF_TOPIC_TEXT = "我主要帮你整理笔记和查找站内内容，你可以试试问我某篇笔记讲了什么。"
 DISCLAIMER_TEXT = "以下为一般性信息，不构成专业意见。"
+
+logger = logging.getLogger(__name__)
+
+def _is_langgraph_placeholder(answer: str) -> bool:
+    text = str(answer or "").strip()
+    return text.startswith("已收到请求：") and "上下文事实" in text
+
+
+async def _generate_chat_answer(
+    model_client: OpenAICompatibleModelClient,
+    request_data: dict[str, Any],
+    facts: list[str],
+    message: str,
+) -> str:
+    system_prompt, user_prompt = _build_content_messages(request_data, facts)
+    try:
+        return await model_client.chat(system_prompt, user_prompt)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("primary model call failed: %s", exc)
+        return await model_client.chat(
+            _base_system_prompt(),
+            f"用户消息: {message}\n请结合站内助手身份简洁回答。",
+        )
+
 
 CHAT_TASK_APPENDIX = (
     "当前任务：基于给定页面上下文与用户消息作答。"
@@ -438,7 +485,11 @@ _BARE_URL_RE = re.compile(r"https?://[^\s\])<>\"'）】]+", re.IGNORECASE)
 
 
 def _should_force_no_result(state: AgentState) -> bool:
-    return bool(state.get("site_retrieval_empty")) and not state.get("citations")
+    return (
+        bool(state.get("site_retrieval_empty"))
+        and not state.get("citations")
+        and bool(state.get("retrieval_intent"))
+    )
 
 
 def _strip_external_urls(text: str) -> str:
@@ -567,6 +618,7 @@ async def _collect_facts(state: AgentState, client: LoginApiClient) -> AgentStat
         except Exception as exc:  # noqa: BLE001
             facts.append(f"问题引用回退到本地模式: {exc.__class__.__name__}")
 
+    retrieval_intent = is_explicit_search_intent(message)
     if should_run_site_retrieval(message, context):
         retrieval_keyword = derive_retrieval_keyword(message, context)
         if retrieval_keyword:
@@ -590,6 +642,17 @@ async def _collect_facts(state: AgentState, client: LoginApiClient) -> AgentStat
             for citation in result.citations:
                 _append_citation(citations, citation)
 
+    if _wants_summary(message) and not resource_preview:
+        summary_title = str(resource.get("title") or "").strip()
+        if not summary_title:
+            bracket_match = _TITLE_BRACKET_RE.search(message)
+            summary_title = bracket_match.group(1).strip() if bracket_match else ""
+        if summary_title:
+            facts.append(
+                f"未获取到《{summary_title}》的笔记正文；若确无正文，可基于该标题所指主题给出"
+                "通用的核心观点与可执行建议，并说明这是通用信息而非笔记原文，不要编造站内引用。"
+            )
+
     if not facts:
         facts.append("未命中远端上下文，使用本地稳定规则回复")
 
@@ -598,6 +661,7 @@ async def _collect_facts(state: AgentState, client: LoginApiClient) -> AgentStat
         "facts": facts,
         "citations": _normalize_citations(citations),
         "site_retrieval_empty": site_retrieval_empty,
+        "retrieval_intent": retrieval_intent,
     }
 
 
@@ -612,7 +676,11 @@ def _draft_answer(state: AgentState) -> AgentState:
     resource_title = _resource_label(resource)
     resource_preview = _preview_text(resource.get("contentPreview") or resource.get("content") or "", 260)
 
-    if state.get("site_retrieval_empty") and not state.get("citations"):
+    if (
+        state.get("site_retrieval_empty")
+        and not state.get("citations")
+        and state.get("retrieval_intent")
+    ):
         answer = NO_RESULT
     elif resource_preview and any(keyword in message for keyword in ("总结", "摘要", "summary", "反馈", "点评")):
         if resource_kind == "note-editor":
@@ -720,17 +788,28 @@ class AgentRuntime:
             answer = state.get("answer", "")
             source = "langgraph"
             try:
-                system_prompt, user_prompt = _build_content_messages(request_data, state.get("facts", []))
-                answer = await self._model_client.chat(system_prompt, user_prompt)
+                answer = await _generate_chat_answer(
+                    self._model_client,
+                    request_data,
+                    state.get("facts", []),
+                    message,
+                )
                 source = "openai-compatible"
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("model chat failed, using langgraph fallback: %s", exc)
             answer = _strip_external_urls(answer)
             answer, answer_links = _apply_answer_reference_links(answer, citations)
         else:
             answer = _strip_external_urls(state.get("answer", ""))
             source = "langgraph"
             answer, answer_links = _apply_answer_reference_links(answer, citations)
+
+        if not str(answer or "").strip() or _is_langgraph_placeholder(answer):
+            fallback = str(state.get("answer") or "").strip()
+            if _is_langgraph_placeholder(fallback):
+                answer = BFF_UNAVAILABLE if self._model_client.is_enabled else (fallback or NO_RESULT)
+            else:
+                answer = fallback or NO_RESULT
 
         return {
             "answer": answer,

@@ -22,6 +22,10 @@ public class RankService {
             if (!context.isModelEnabled() && !(ranker instanceof RuleRanker)) {
                 continue;
             }
+            // Keep search relevance stable: ES order + rule features, skip model rankers.
+            if ("SEARCH".equalsIgnoreCase(context.getScene()) && !(ranker instanceof RuleRanker)) {
+                continue;
+            }
             ranked = ranker.rank(context, ranked);
         }
 

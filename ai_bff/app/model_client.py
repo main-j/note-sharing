@@ -20,6 +20,12 @@ class OpenAICompatibleModelClient:
     def is_enabled(self) -> bool:
         return bool(self.base_url.strip() and self.api_key.strip() and self.model_name.strip())
 
+    def _normalized_base_url(self) -> str:
+        trimmed = self.base_url.rstrip("/")
+        if trimmed.endswith("/v1"):
+            return trimmed
+        return f"{trimmed}/v1"
+
     def _headers(self) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
@@ -46,7 +52,7 @@ class OpenAICompatibleModelClient:
         if response_format:
             payload["response_format"] = {"type": response_format}
 
-        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        url = f"{self._normalized_base_url()}/chat/completions"
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             response = await client.post(url, json=payload, headers=self._headers())
             response.raise_for_status()

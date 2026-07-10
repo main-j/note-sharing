@@ -196,6 +196,18 @@ CREATE TABLE IF NOT EXISTS `user_favorite_note` (
     KEY `idx_note_id` (`note_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户收藏笔记关系表';
 
+-- 用户点赞笔记表
+CREATE TABLE IF NOT EXISTS `user_like_note` (
+    `id` bigint NOT NULL AUTO_INCREMENT,
+    `user_id` bigint NOT NULL COMMENT '用户ID',
+    `note_id` bigint NOT NULL COMMENT '笔记ID',
+    `like_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_note` (`user_id`, `note_id`),
+    KEY `idx_user_id` (`user_id`),
+    KEY `idx_note_id` (`note_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户点赞笔记关系表';
+
 -- ============================================
 -- 6. 会话相关表
 -- ============================================

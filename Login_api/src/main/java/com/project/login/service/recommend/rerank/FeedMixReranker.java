@@ -20,6 +20,9 @@ public class FeedMixReranker implements Reranker {
 
     @Override
     public List<ContentCandidate> rerank(RecommendContext context, List<ContentCandidate> candidates) {
+        if ("SEARCH".equalsIgnoreCase(context.getScene())) {
+            return candidates;
+        }
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }

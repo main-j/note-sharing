@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 
 @Tag(name = "QA", description = "Manage questions and answers")
 @RestController
@@ -19,6 +21,12 @@ import org.springframework.web.bind.annotation.*;
 public class QAController {
 
     private final QuestionService qaService;
+
+    @GetMapping("/questions")
+    @Operation(summary = "List all questions")
+    public StandardResponse<List<QuestionVO>> listQuestions() {
+        return StandardResponse.success(qaService.getAllQuestions());
+    }
 
     // Question
     @PostMapping("/question")

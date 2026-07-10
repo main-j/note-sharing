@@ -24,7 +24,7 @@ public interface SearchConvert {
         // 假设 ES 返回的是 Map<String, Object>
         Map<String, Object> map = (Map<String, Object>) source;
 
-        vo.setNoteId(map.get("id") != null ? Long.valueOf(map.get("id").toString()) : null);
+        vo.setNoteId(resolveNoteId(map));
         vo.setTitle((String) map.get("title"));
         vo.setContentSummary((String) map.get("contentSummary")); // 对应 VO 字段
 
@@ -41,6 +41,17 @@ public interface SearchConvert {
         }
 
         return vo;
+    }
+
+    default Long resolveNoteId(Map<String, Object> map) {
+        Object id = map.get("id");
+        if (id == null) {
+            id = map.get("noteId");
+        }
+        if (id == null) {
+            return null;
+        }
+        return Long.valueOf(id.toString());
     }
 
 }

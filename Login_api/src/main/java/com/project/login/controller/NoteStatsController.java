@@ -1,7 +1,9 @@
 package com.project.login.controller;
 
 import com.project.login.mapper.UserFavoriteNoteMapper;
+import com.project.login.mapper.UserLikeNoteMapper;
 import com.project.login.model.dataobject.UserFavoriteNoteDO;
+import com.project.login.model.dataobject.UserLikeNoteDO;
 import com.project.login.model.dto.userbehavior.BehaviorType;
 import com.project.login.model.dto.userbehavior.UserBehaviorDTO;
 import com.project.login.model.response.StandardResponse;
@@ -25,6 +27,7 @@ public class NoteStatsController {
     private final NoteStatsService noteStatsService;
     private final UserBehaviorService userBehaviorService;
     private final UserFavoriteNoteMapper userFavoriteNoteMapper;
+    private final UserLikeNoteMapper userLikeNoteMapper;
     private final NotificationService notificationService;
 
     @Operation(summary = "Increment/Decrement a note statistic field")
@@ -36,35 +39,50 @@ public class NoteStatsController {
             @RequestParam String field,
             @RequestParam(defaultValue = "1") long delta) {
 
-        // 更新笔记统计（NoteStatsService 内部已确保数值非负数）
+        String fieldLower = field.toLowerCase();
+
+        // 点赞/收藏：先校验关系是否已存在，避免重复操作导致计数漂移
+        if ("likes".equals(fieldLower)) {
+            boolean alreadyLiked = userLikeNoteMapper.exists(userId, noteId) > 0;
+            if ((delta > 0 && alreadyLiked) || (delta < 0 && !alreadyLiked)) {
+                return StandardResponse.success(enrichWithUserState(noteStatsService.getStats(noteId), userId));
+            }
+        } else if ("favorites".equals(fieldLower)) {
+            boolean alreadyFavorited = userFavoriteNoteMapper.exists(userId, noteId) > 0;
+            if ((delta > 0 && alreadyFavorited) || (delta < 0 && !alreadyFavorited)) {
+                return StandardResponse.success(enrichWithUserState(noteStatsService.getStats(noteId), userId));
+            }
+        }
+
         NoteStatsVO vo = noteStatsService.changeField(noteId, field, delta);
 
-        // 构建用户行为记录
         UserBehaviorDTO dto = new UserBehaviorDTO();
         dto.setUserId(userId);
         dto.setTargetId(noteId);
-        String fieldLower = field.toLowerCase();
 
-        // 根据字段设置行为类型并处理相关逻辑
         switch (fieldLower) {
             case "views":
                 dto.setBehaviorType(BehaviorType.VIEW);
                 break;
             case "likes":
                 dto.setBehaviorType(BehaviorType.LIKE);
-                // 点赞关系只记录行为，不存储到数据库
+                if (delta > 0) {
+                    UserLikeNoteDO like = new UserLikeNoteDO();
+                    like.setUserId(userId);
+                    like.setNoteId(noteId);
+                    userLikeNoteMapper.insert(like);
+                } else {
+                    userLikeNoteMapper.delete(userId, noteId);
+                }
                 break;
             case "favorites":
                 dto.setBehaviorType(BehaviorType.FAVORITE);
-                // 处理收藏关系：如果 delta > 0 表示收藏，否则表示取消收藏
                 if (delta > 0) {
-                    // 收藏：插入或更新收藏关系
                     UserFavoriteNoteDO favorite = new UserFavoriteNoteDO();
                     favorite.setUserId(userId);
                     favorite.setNoteId(noteId);
                     userFavoriteNoteMapper.insert(favorite);
                 } else {
-                    // 取消收藏：删除收藏关系
                     userFavoriteNoteMapper.delete(userId, noteId);
                 }
                 break;
@@ -75,24 +93,32 @@ public class NoteStatsController {
                 throw new IllegalArgumentException("Unsupported field: " + field);
         }
 
-        // 记录用户行为
         userBehaviorService.recordBehavior(dto);
 
-        // 创建相应通知（仅在增加时发送，避免取消点赞/收藏也发通知）
         if ("likes".equals(fieldLower) && delta > 0) {
             notificationService.createNoteLikeNotification(userId, noteId);
         } else if ("favorites".equals(fieldLower) && delta > 0) {
             notificationService.createNoteFavoriteNotification(userId, noteId);
         }
 
-        return StandardResponse.success(vo);
+        return StandardResponse.success(enrichWithUserState(vo, userId));
     }
-
 
     @Operation(summary = "Get note statistics")
     @GetMapping("/{noteId}")
-    public StandardResponse<NoteStatsVO> get(@PathVariable Long noteId) {
+    public StandardResponse<NoteStatsVO> get(
+            @PathVariable Long noteId,
+            @RequestParam(required = false) Long userId) {
         NoteStatsVO vo = noteStatsService.getStats(noteId);
-        return StandardResponse.success(vo);
+        return StandardResponse.success(enrichWithUserState(vo, userId));
+    }
+
+    private NoteStatsVO enrichWithUserState(NoteStatsVO vo, Long userId) {
+        if (userId == null || vo == null) {
+            return vo;
+        }
+        vo.setLikedOrNot(userLikeNoteMapper.exists(userId, vo.getNoteId()) > 0);
+        vo.setFavoritedOrNot(userFavoriteNoteMapper.exists(userId, vo.getNoteId()) > 0);
+        return vo;
     }
 }

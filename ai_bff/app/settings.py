@@ -59,7 +59,7 @@ class Settings:
     model_max_tokens: int = int(os.getenv("AI_MODEL_MAX_TOKENS", "1200"))
     model_timeout: float = float(os.getenv("AI_MODEL_TIMEOUT", "30"))
     host: str = os.getenv("AI_BFF_HOST", "0.0.0.0")
-    port: int = int(os.getenv("AI_BFF_PORT", "8000"))
+    port: int = int(os.getenv("AI_BFF_PORT", "8003"))
     app_name: str = os.getenv("AI_APP_NAME", "folio-ai-bff")
     allowed_origins: list[str] = field(
         default_factory=lambda: [

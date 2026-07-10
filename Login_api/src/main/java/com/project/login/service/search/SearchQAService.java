@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.login.convert.QuestionConvert;
 import com.project.login.model.dataobject.QuestionDO;
 import com.project.login.model.vo.qa.QuestionVO;
-import com.project.login.repository.QuestionRepository;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -25,7 +28,7 @@ import java.util.stream.Collectors;
 public class SearchQAService {
 
     private final ElasticsearchClient esClient;
-    private final QuestionRepository questionRepository; // MongoDB
+    private final MongoTemplate mongoTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
     private final QuestionConvert convert;
     private final ObjectMapper objectMapper;
@@ -36,7 +39,7 @@ public class SearchQAService {
 
     public List<QuestionVO> searchQuestions(String keyword) {
 
-        List<ScoredQuestion> scoredList = new ArrayList<>();
+        List<ScoredQuestion> esHits = new ArrayList<>();
 
         // ES 搜索，只获取 questionId
         try {
@@ -53,18 +56,23 @@ public class SearchQAService {
             );
 
             response.hits().hits().forEach(hit -> {
-                if (hit.source() == null) return;
-
-                // 获取 questionId
-                Map<String, Object> src = (Map<String, Object>) hit.source();
-                String questionId = (String) src.get("questionId");
+                String questionId = resolveQuestionId(hit.source(), hit.id());
+                if (questionId == null) {
+                    return;
+                }
 
                 double score = hit.score() != null ? hit.score() : 0;
-                scoredList.add(new ScoredQuestion(questionId, score));
+                esHits.add(new ScoredQuestion(questionId, score));
             });
 
         } catch (IOException e) {
             throw new RuntimeException("ES 搜索失败", e);
+        }
+
+        List<ScoredQuestion> scoredList = dedupeByQuestionId(esHits);
+
+        if (scoredList.isEmpty()) {
+            scoredList = searchMongoFallback(keyword);
         }
 
         if (scoredList.isEmpty()) return Collections.emptyList();
@@ -80,62 +88,147 @@ public class SearchQAService {
         scoredList.forEach(s -> {
             QuestionDO data = detailMap.get(s.questionId);
             if (data != null) {
-                s.vo = convert.toQuestionVO(data);
-                s.updatedAt = getLatestActivity(data); // 赋值最新活跃时间
+                s.vo = convert.toQuestionSearchVO(data);
+                s.updatedAt = getLatestActivity(data);
             }
         });
 
-        // 综合排序：ES score + 点赞/收藏/回答数
+        // 综合排序：ES score + 点赞/收藏/回答数（跳过 Mongo 未命中的条目）
+        scoredList.removeIf(s -> s.vo == null);
         scoredList.sort((a, b) -> {
-            double sa = a.score * 4 +
-                    a.vo.getLikeCount() * 2 +
-                    a.vo.getFavoriteCount() * 3+
-                    a.vo.getAnswers().size() +
-                    recencyScore(a.updatedAt);;
+            int answersA = a.vo.getAnswers() != null ? a.vo.getAnswers().size()
+                    : (a.vo.getAnswerCount() != null ? a.vo.getAnswerCount() : 0);
+            int answersB = b.vo.getAnswers() != null ? b.vo.getAnswers().size()
+                    : (b.vo.getAnswerCount() != null ? b.vo.getAnswerCount() : 0);
+            double sa = a.score * 4
+                    + safeInt(a.vo.getLikeCount()) * 2
+                    + safeInt(a.vo.getFavoriteCount()) * 3
+                    + answersA
+                    + recencyScore(a.updatedAt);
 
-            double sb = b.score * 4 +
-                    b.vo.getLikeCount() * 2 +
-                    b.vo.getFavoriteCount() * 3 +
-                    b.vo.getAnswers().size() +
-                    recencyScore(b.updatedAt);;
+            double sb = b.score * 4
+                    + safeInt(b.vo.getLikeCount()) * 2
+                    + safeInt(b.vo.getFavoriteCount()) * 3
+                    + answersB
+                    + recencyScore(b.updatedAt);
 
             return Double.compare(sb, sa);
         });
 
-        // 返回 QuestionVO 列表
         return scoredList.stream()
                 .map(s -> s.vo)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+    }
+
+    private int safeInt(Integer value) {
+        return value != null ? value : 0;
+    }
+
+    private String resolveQuestionId(Object source, String documentId) {
+        if (source instanceof Map<?, ?> src) {
+            Object rawId = src.get("questionId");
+            if (rawId != null) {
+                String questionId = String.valueOf(rawId).trim();
+                if (!questionId.isBlank()) {
+                    return questionId;
+                }
+            }
+        }
+        if (documentId == null || documentId.isBlank()) {
+            return null;
+        }
+        return documentId.trim();
+    }
+
+    private List<ScoredQuestion> dedupeByQuestionId(List<ScoredQuestion> scoredList) {
+        Map<String, ScoredQuestion> deduped = new LinkedHashMap<>();
+        for (ScoredQuestion scoredQuestion : scoredList) {
+            if (scoredQuestion.questionId == null || scoredQuestion.questionId.isBlank()) {
+                continue;
+            }
+            deduped.merge(
+                    scoredQuestion.questionId,
+                    scoredQuestion,
+                    (left, right) -> left.score >= right.score ? left : right
+            );
+        }
+        return new ArrayList<>(deduped.values());
+    }
+
+    private List<ScoredQuestion> searchMongoFallback(String keyword) {
+        String trimmed = keyword == null ? "" : keyword.trim();
+        if (trimmed.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        String escaped = Pattern.quote(trimmed);
+        Criteria criteria = new Criteria().orOperator(
+                Criteria.where("title").regex(escaped, "i"),
+                Criteria.where("content").regex(escaped, "i"),
+                Criteria.where("tags").regex(escaped, "i")
+        );
+        Query query = new Query(criteria).limit(30);
+        List<QuestionDO> questions = mongoTemplate.find(query, QuestionDO.class);
+        if (questions == null || questions.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<ScoredQuestion> scoredList = new ArrayList<>(questions.size());
+        for (int i = 0; i < questions.size(); i++) {
+            QuestionDO question = questions.get(i);
+            if (question.getQuestionId() == null || question.getQuestionId().isBlank()) {
+                continue;
+            }
+            scoredList.add(new ScoredQuestion(question.getQuestionId(), 1.0 - (i * 0.01)));
+        }
+        log.info("QA search ES miss, Mongo fallback hit {} items for keyword={}", scoredList.size(), trimmed);
+        return scoredList;
     }
 
     // 批量加载 Redis → MongoDB
     private Map<String, QuestionDO> loadQuestionDetailBatch(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
         Map<String, QuestionDO> result = new HashMap<>();
+        List<String> missingIds = new ArrayList<>();
 
         for (String qid : ids) {
+            if (qid == null || qid.isBlank()) {
+                continue;
+            }
             String key = REDIS_KEY_PREFIX + qid;
 
             try {
-                // 1. 先从 Redis 获取
                 String json = redis.opsForValue().get(key);
                 if (json != null) {
-                    // Redis 命中，解析 JSON
                     QuestionDO q = objectMapper.readValue(json, QuestionDO.class);
                     result.put(qid, q);
                     continue;
                 }
-
-                // 2. Redis 未命中 → MongoDB 查询
-                QuestionDO db = questionRepository.findById(qid).orElse(null);
-                if (db != null) {
-                    // 写入 Redis
-                    String dbJson = objectMapper.writeValueAsString(db);
-                    redis.opsForValue().set(key, dbJson, Duration.ofHours(2));
-                    result.put(qid, db);
-                }
-
             } catch (Exception e) {
-                log.error("加载问题详情失败 qid={}", qid, e);
+                log.warn("Redis 问答缓存解析失败 qid={}", qid, e);
+            }
+
+            missingIds.add(qid);
+        }
+
+        if (!missingIds.isEmpty()) {
+            Query query = new Query(Criteria.where("questionId").in(missingIds));
+            List<QuestionDO> docs = mongoTemplate.find(query, QuestionDO.class);
+            for (QuestionDO doc : docs) {
+                if (doc.getQuestionId() == null || doc.getQuestionId().isBlank()) {
+                    continue;
+                }
+                result.put(doc.getQuestionId(), doc);
+                try {
+                    String dbJson = objectMapper.writeValueAsString(doc);
+                    redis.opsForValue().set(REDIS_KEY_PREFIX + doc.getQuestionId(), dbJson, Duration.ofHours(2));
+                } catch (Exception e) {
+                    log.warn("写入 Redis 问答缓存失败 qid={}", doc.getQuestionId(), e);
+                }
             }
         }
 
@@ -147,13 +240,22 @@ public class SearchQAService {
         if (q == null) return null;
 
         LocalDateTime latest = q.getCreatedAt();
+        if (q.getAnswers() == null) {
+            return latest;
+        }
 
         for (var ans : q.getAnswers()) {
             latest = max(latest, ans.getCreatedAt());
 
+            if (ans.getComments() == null) {
+                continue;
+            }
             for (var c : ans.getComments()) {
                 latest = max(latest, c.getCreatedAt());
 
+                if (c.getReplies() == null) {
+                    continue;
+                }
                 for (var r : c.getReplies()) {
                     latest = max(latest, r.getCreatedAt());
                 }

@@ -263,7 +263,7 @@ public class NoteService {
         NoteShowVO vo = new NoteShowVO();
         vo.setId(existing.getId());
         vo.setTitle(existing.getTitle());
-        vo.setFileType(existing.getFileType());
+        vo.setFileType(normalizeFileType(existing.getFileType()));
         vo.setNotebookId(existing.getNotebookId());
         boolean fileExists = existing.getFilename() != null && minioservice.fileExists(existing.getFilename());
         vo.setFileExists(fileExists);
@@ -439,7 +439,7 @@ public class NoteService {
             NoteShowVO vo = new NoteShowVO();
             vo.setId(noteDO.getId());
             vo.setTitle(noteDO.getTitle());
-            vo.setFileType(noteDO.getFileType());
+            vo.setFileType(normalizeFileType(noteDO.getFileType()));
             vo.setNotebookId(noteDO.getNotebookId());
             vo.setCreatedAt(noteDO.getCreatedAt());
             vo.setUpdatedAt(noteDO.getUpdatedAt());
@@ -479,11 +479,6 @@ public class NoteService {
         return voList;
     }
 
-    /**
-     * 检查笔记是否在审核中
-     * @param noteId 笔记ID
-     * @return true=在审核中，false=不在审核中
-     */
     private boolean isNoteUnderModeration(Long noteId) {
         try {
             // 直接使用Mapper查询，避免循环依赖
@@ -499,6 +494,13 @@ public class NoteService {
             // 检查失败时，为了安全起见，返回true（阻止操作）
             return true;
         }
+    }
+
+    private String normalizeFileType(String fileType) {
+        if (fileType == null || fileType.isBlank()) {
+            return null;
+        }
+        return fileType.toLowerCase();
     }
 
 }

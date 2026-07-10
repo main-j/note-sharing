@@ -121,11 +121,22 @@ dependencies {
     implementation "org.apache.flink:flink-java:${flinkVersion}"
     implementation "org.apache.flink:flink-streaming-java:${flinkVersion}"
     implementation "org.apache.flink:flink-clients:${flinkVersion}"
+    implementation "org.apache.flink:flink-connector-base:${flinkVersion}"
     implementation "org.apache.flink:flink-connector-kafka:3.2.0-1.19"
+    implementation("org.apache.hadoop:hadoop-common:3.4.1") {
+        exclude group: 'org.slf4j', module: 'slf4j-reload4j'
+        exclude group: 'ch.qos.reload4j', module: 'reload4j'
+    }
     implementation 'redis.clients:jedis:5.2.0'
     implementation 'com.microsoft.onnxruntime:onnxruntime:1.20.0'
     implementation 'io.milvus:milvus-sdk-java:2.4.4'
 
+}
+
+configurations.configureEach {
+    exclude group: 'org.slf4j', module: 'slf4j-reload4j'
+    exclude group: 'ch.qos.reload4j', module: 'reload4j'
+    resolutionStrategy.force "org.apache.hadoop:hadoop-common:3.4.1"
 }
 
 hibernate {
@@ -136,4 +147,14 @@ hibernate {
 
 test {
     useJUnitPlatform()
+}
+
+tasks.register('runBehaviorSearchJob', JavaExec) {
+    group = 'application'
+    description = 'Run the Flink BehaviorSearchJob for local recommendation development.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.project.login.service.flink.BehaviorSearchJob'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }

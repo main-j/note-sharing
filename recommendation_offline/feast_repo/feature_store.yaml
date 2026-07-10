@@ -1,8 +1,9 @@
 project: note_sharing_recommend
 registry: data/registry.db
 provider: local
+entity_key_serialization_version: 2
 online_store:
   type: redis
-  connection_string: "${FEAST_REDIS_CONNECTION:localhost:6379}"
+  connection_string: "${FEAST_REDIS_CONNECTION}"
 offline_store:
   type: file
